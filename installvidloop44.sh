@@ -1,4 +1,4 @@
-#!/bin/bash
+echo "Desarrollado por IGNACE - Powered By: 44 Contenidos"
 
 echo "Actualizando sistema..."
 sudo apt-get update && sudo apt-get upgrade -y
@@ -33,4 +33,4 @@ cp ./video_looper.ini ./pi_video_looper/assets/video_looper.ini
 echo "Instalando ZeroTier para VPN..."
 curl -s https://install.zerotier.com | sudo bash
 
-echo "Instalación completada. Reinicia la Raspberry Pi para aplicar los cambios."
+echo "Instalación completada. Reinicia la Raspberry Pi para aplicar los cambios (sudo reboot)."
