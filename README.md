@@ -25,8 +25,8 @@ Este sistema convierte cualquier Raspberry Pi en un reproductor de videoloops pl
 
 1. **Clonar el repositorio en la Raspberry Pi:**
    ```
-   bash git clone <URL_DE_TU_REPOSITORIO>
-   cd <nombre_del_directorio>
+   bash git clone https://github.com/ignacentenox/VIDLOOP.git
+   cd VIDLOOP
    ```
 
 2. **Dar permisos de ejecución al instalador:**
