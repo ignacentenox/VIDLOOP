@@ -1,3 +1,6 @@
+#!/bin/bash
+set -euo pipefail
+
 echo "Desarrollado por IGNACE - Powered By: 44 Contenidos"
 
 echo "Actualizando sistema..."
@@ -32,6 +35,15 @@ cp ./video_looper.ini ./pi_video_looper/assets/video_looper.ini
 
 echo "Instalando ZeroTier para VPN..."
 curl -s https://install.zerotier.com | sudo bash
+
+echo "Por favor, ingresa el ID de tu red ZeroTier para unir la Raspberry Pi a la VPN:"
+read -p "ID de red ZeroTier: " ZTNETID
+if [ ! -z "$ZTNETID" ]; then
+  sudo zerotier-cli join "$ZTNETID"
+  echo "Raspberry Pi unida a la red ZeroTier: $ZTNETID"
+else
+  echo "No se ingresó ningún ID de red ZeroTier. Puedes unir manualmente luego con: sudo zerotier-cli join <ID>"
+fi
 
 # === VIDLOOP-SETUP: Forzar HDMI + SSH con password (admin:4455) ===
 
@@ -125,13 +137,17 @@ EOF'
 sudo systemctl daemon-reload
 sudo systemctl enable --now hdmi-keepalive.service
 
+echo "Creando carpeta de videos en /home/pi/VIDLOOP44..."
+sudo mkdir -p /home/pi/VIDLOOP44
+sudo chown pi:pi /home/pi/VIDLOOP44
+
 echo
 echo "=== FIN ==="
 echo "Usuario: admin  |  Contraseña: 4455"
 echo "SSH password only habilitado"
 echo "HDMI forzado y servicio keepalive activo"
+echo "Desarrollado por IGNACE - Powered By: 44 Contenidos"
 echo
 echo "Reiniciando en 6s..."
 sleep 6
 sudo reboot
-echo "Desarrollado por IGNACE - Powered By: 44 Contenidos"
