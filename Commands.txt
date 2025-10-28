@@ -1,0 +1,444 @@
+# ================================================================
+#                    VIDLOOP 2.0 - COMANDOS
+#            Desarrollado por IGNACE - Powered By: 44 Contenidos
+# ================================================================
+
+# =================
+# INSTALACIÓN INICIAL
+# =================
+
+# Actualizar sistema (opcional)
+sudo apt update && sudo apt upgrade -y
+
+
+# =================
+# CONTROL DE SERVICIOS
+# =================
+
+# Ver estado del servicio principal
+sudo systemctl status video_looper
+
+# Iniciar servicio
+sudo systemctl start video_looper
+
+# Detener servicio
+sudo systemctl stop video_looper
+
+# Reiniciar servicio
+sudo systemctl restart video_looper
+
+# Habilitar inicio automático
+sudo systemctl enable video_looper
+
+# Deshabilitar inicio automático
+sudo systemctl disable video_looper
+
+# Ver estado HDMI keepalive
+sudo systemctl status hdmi-keepalive
+
+# Reiniciar HDMI keepalive
+sudo systemctl restart hdmi-keepalive
+
+# =================
+# LOGS Y DIAGNÓSTICOS
+# =================
+
+# Ver logs del servicio principal en tiempo real
+sudo journalctl -u video_looper -f
+
+# Ver logs del servicio (últimas 50 líneas)
+sudo journalctl -u video_looper -n 50
+
+# Ver logs del HDMI keepalive
+sudo journalctl -u hdmi-keepalive -f
+
+# Ver logs del script optimizado
+tail -f /var/log/vidloop-definitivo.log
+
+# Ver logs HDMI keepalive
+tail -f /var/log/hdmi-keepalive.log
+
+# Ejecutar diagnóstico completo
+sudo /usr/local/bin/vidloop-definitivo-diagnostic.sh
+
+# Ver últimas 100 líneas del log del sistema
+sudo journalctl -n 100
+
+# Limpiar logs antiguos (liberar espacio)
+sudo journalctl --vacuum-time=30d
+
+# =================
+# MONITOREO DEL SISTEMA
+# =================
+
+# Ver temperatura de la CPU
+vcgencmd measure_temp
+
+# Ver frecuencia de la CPU
+vcgencmd measure_clock arm
+
+# Ver memoria asignada a GPU
+vcgencmd get_mem gpu
+
+# Ver información del hardware
+cat /proc/cpuinfo
+
+# Ver uso de memoria
+free -h
+
+# Ver uso de disco
+df -h
+
+# Ver procesos de video activos
+ps aux | grep -i video_looper
+ps aux | grep -i omxplayer
+
+# Monitorear temperatura en tiempo real
+watch -n 2 vcgencmd measure_temp
+
+# Ver governor de CPU actual
+cat /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor
+
+# Configurar CPU a máximo rendimiento
+echo performance | sudo tee /sys/devices/system/cpu/cpu*/cpufreq/scaling_governor
+
+# =================
+# CONFIGURACIÓN HDMI
+# =================
+
+# Ver estado actual del HDMI
+tvservice -s
+
+# Forzar HDMI encendido
+sudo tvservice -p
+
+# Configurar resolución HDMI específica
+sudo tvservice --explicit="CEA 16 HDMI"
+
+# Ver modos HDMI disponibles
+tvservice -m CEA
+
+# Verificar framebuffer
+ls -la /dev/fb0
+
+# Configurar resolución de framebuffer
+fbset -g 1920 1080 1920 1080 32
+
+# Cambiar a terminal virtual (para refrescar display)
+chvt 1 && sleep 1 && chvt 7
+
+# =================
+# ZEROTIER VPN
+# =================
+
+# Ver información de ZeroTier
+sudo zerotier-cli info
+
+# Listar redes conectadas
+sudo zerotier-cli listnetworks
+
+# Unirse a una red ZeroTier
+sudo zerotier-cli join NETWORK_ID
+
+# Salir de una red ZeroTier
+sudo zerotier-cli leave NETWORK_ID
+
+# Ver estado del servicio ZeroTier
+sudo systemctl status zerotier-one
+
+# Reiniciar servicio ZeroTier
+sudo systemctl restart zerotier-one
+
+# Ver IP asignada por ZeroTier
+ip addr show | grep zt
+
+# =================
+# CONFIGURACIÓN DE ARCHIVOS
+# =================
+
+# Editar configuración principal de video_looper
+sudo nano /opt/video_looper/video_looper.ini
+
+# Ver configuración actual
+cat /opt/video_looper/video_looper.ini
+
+# Editar configuración de HDMI (config.txt)
+sudo nano /boot/config.txt
+
+# Ver configuración HDMI actual
+cat /boot/config.txt | grep -E "(hdmi|gpu|arm_freq)"
+
+# Editar configuración SSH
+sudo nano /etc/ssh/sshd_config
+
+# Reiniciar SSH después de cambios
+sudo systemctl restart ssh
+
+# =================
+# SCRIPTS PERSONALIZADOS
+# =================
+
+# Ejecutar script optimizado manualmente
+sudo /usr/local/bin/vidloop-definitivo.sh
+
+# Ver contenido del script optimizado
+cat /usr/local/bin/vidloop-definitivo.sh
+
+# Editar script optimizado
+sudo nano /usr/local/bin/vidloop-definitivo.sh
+
+# Ver script de diagnóstico
+cat /usr/local/bin/vidloop-definitivo-diagnostic.sh
+
+# Ejecutar script HDMI keepalive manualmente
+sudo /usr/local/bin/hdmi-keepalive.sh
+
+# =================
+# PROCESOS Y RENDIMIENTO
+# =================
+
+# Ver procesos con mayor uso de CPU
+top -n 1 -b | head -20
+
+# Ver procesos de video específicamente
+pgrep -f video_looper
+pgrep -f omxplayer
+pgrep -f vidloop
+
+# Matar procesos de video (si es necesario)
+sudo pkill -f video_looper
+sudo pkill -f omxplayer
+
+# Ver prioridad de procesos
+ps -o pid,ni,comm -p $(pgrep video_looper)
+
+# Cambiar prioridad de proceso (máxima)
+sudo renice -20 $(pgrep video_looper)
+
+# Ver uso de I/O
+sudo iotop -n 1
+
+# Ver información detallada del sistema
+htop
+
+# =================
+# RED Y CONECTIVIDAD
+# =================
+
+# Ver configuración de red
+ip addr show
+
+# Verificar conectividad a internet
+ping -c 3 8.8.8.8
+
+# Ver puertos abiertos
+sudo netstat -tulpn
+
+# Verificar conexión SSH
+ssh admin@localhost
+
+# Ver información de WiFi (si aplica)
+iwconfig
+
+# Escanear redes WiFi disponibles
+sudo iwlist scan | grep ESSID
+
+# =================
+# ACTUALIZACIONES Y MANTENIMIENTO
+# =================
+
+# Actualizar sistema completo
+sudo apt update && sudo apt upgrade -y
+
+# Limpiar paquetes innecesarios
+sudo apt autoremove -y
+sudo apt autoclean
+
+# Actualizar VIDLOOP 2.0
+curl -O https://raw.githubusercontent.com/ignacentenox/VIDLOOP/main/RASPBERRY-PAGE/vidloop-definitivo.sh
+chmod +x vidloop-definitivo.sh
+sudo ./vidloop-definitivo.sh
+
+# Verificar espacio en disco
+du -sh /home/admin/VIDLOOP44/
+du -sh /var/log/
+
+# Limpiar logs de video_looper
+sudo truncate -s 0 /var/log/vidloop-definitivo.log
+
+# =================
+# BACKUP Y RESTAURACIÓN
+# =================
+
+# Hacer backup de configuración
+sudo cp /opt/video_looper/video_looper.ini /home/admin/video_looper.ini.backup
+
+# Restaurar configuración desde backup
+sudo cp /home/admin/video_looper.ini.backup /opt/video_looper/video_looper.ini
+
+# Hacer backup de config.txt
+sudo cp /boot/config.txt /home/admin/config.txt.backup
+
+# Crear imagen de la SD (desde otra máquina Linux)
+sudo dd if=/dev/sdX of=/home/user/rpi-backup.img bs=4M status=progress
+
+# =================
+# SOLUCIÓN DE PROBLEMAS
+# =================
+
+# Reinicio completo del sistema
+sudo reboot
+
+# Apagado completo
+sudo shutdown -h now
+
+# Forzar reinicio (solo en emergencias)
+sudo reboot -f
+
+# Verificar que no hay errores de memoria
+dmesg | grep -i error
+
+# Ver mensajes del kernel relacionados con video
+dmesg | grep -i gpu
+
+# Verificar montaje de particiones
+mount | grep -E "(boot|root)"
+
+# Reparar sistema de archivos (solo si es necesario)
+sudo fsck /dev/mmcblk0p2
+
+# Reinstalar dependencias críticas
+sudo apt-get install --reinstall omxplayer python3-pip
+
+# =================
+# COMANDOS DE EMERGENCIA
+# =================
+
+# Si la pantalla está negra
+sudo tvservice -p
+sudo tvservice --explicit="CEA 16 HDMI"
+chvt 6 && chvt 7
+
+# Si el video no funciona
+sudo systemctl stop video_looper
+sudo pkill -f omxplayer
+sudo systemctl start video_looper
+
+# Si no hay audio
+sudo amixer set PCM 90%
+sudo amixer set Master 90%
+
+# Si ZeroTier no conecta
+sudo systemctl restart zerotier-one
+sudo zerotier-cli info
+
+# Resetear configuración de red
+sudo systemctl restart networking
+
+# =================
+# INFORMACIÓN DEL SISTEMA
+# =================
+
+# Ver modelo de Raspberry Pi
+cat /proc/device-tree/model
+
+# Ver versión del kernel
+uname -a
+
+# Ver versión de Raspberry Pi OS
+cat /etc/os-release
+
+# Ver uptime del sistema
+uptime
+
+# Ver usuarios conectados
+who
+
+# Ver servicios activos
+systemctl --type=service --state=active
+
+# Ver información de CPU
+lscpu
+
+# Ver dispositivos USB conectados
+lsusb
+
+# Ver dispositivos de almacenamiento
+lsblk
+
+# =================
+# TESTING Y VALIDACIÓN
+# =================
+
+# Probar reproducción directa de video
+omxplayer --display 7 /home/admin/VIDLOOP44/test.mp4
+
+# Verificar códecs disponibles
+omxplayer --help | grep -i codec
+
+# Test de red básico
+curl -I https://www.google.com
+
+# Verificar DNS
+nslookup google.com
+
+# Test de escritura en SD
+dd if=/dev/zero of=/tmp/test bs=1M count=100
+
+# Test de rendimiento de GPU
+/opt/vc/bin/vcgencmd measure_temp && /opt/vc/bin/vcgencmd get_throttled
+
+# =================
+# CONFIGURACIONES AVANZADAS
+# =================
+
+# Cambiar directorio de videos (editar video_looper.ini)
+sudo sed -i 's|directory_path = .*|directory_path = /tu/nueva/ruta|' /opt/video_looper/video_looper.ini
+
+# Cambiar tiempo de espera entre videos
+sudo sed -i 's|wait_time = .*|wait_time = 2|' /opt/video_looper/video_looper.ini
+
+# Habilitar/deshabilitar OSD
+sudo sed -i 's|show_osd = .*|show_osd = true|' /opt/video_looper/video_looper.ini
+
+# Cambiar orden de reproducción
+sudo sed -i 's|playlist_order = .*|playlist_order = random|' /opt/video_looper/video_looper.ini
+
+# Configurar volumen por defecto
+sudo sed -i 's|volume = .*|volume = 75|' /opt/video_looper/video_looper.ini
+
+# =================
+# URLS Y RECURSOS
+# =================
+
+# Panel ZeroTier: https://my.zerotier.com/
+# Repositorio GitHub: https://github.com/ignacentenox/VIDLOOP
+# Script directo: https://raw.githubusercontent.com/ignacentenox/VIDLOOP/main/RASPBERRY-PAGE/vidloop-definitivo.sh
+
+# =================
+# INFORMACIÓN DE CONTACTO
+# =================
+
+# Desarrollador: Ignacio Manuel Centeno
+# Email: ignacenteno46@gmail.com  
+# Empresa: 44 Contenidos
+# Proyecto: VIDLOOP 2.0
+
+# =================
+# FORMATOS DE VIDEO RECOMENDADOS
+# =================
+
+# ÓPTIMOS (sin micro-cortes):
+# - MP4 con códec H.264
+# - Archivos H.264 puros (.h264)
+# - MKV con códec H.264
+
+# EVITAR (pueden causar micro-cortes):
+# - AVI, WMV, FLV, MOV (algunos)
+
+# CONFIGURACIÓN DE CODIFICACIÓN RECOMENDADA:
+# ffmpeg -i input.mp4 -c:v h264 -b:v 5M -c:a aac -b:a 192k output.mp4
+
+# ================================================================
+#                         FIN DE COMANDOS
+# ================================================================
