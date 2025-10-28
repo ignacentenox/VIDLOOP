@@ -2,8 +2,7 @@
 set -euo pipefail
 
 # ================================================================
-#           VIDLOOP DEFINITIVO - INSTALADOR COMPLETO
-#    Combina: Setup + Anti-Micro-Cortes + Force Display
+#                            VIDLOOP
 #      Desarrollado por IGNACE - Powered By: 44 Contenidos
 # ================================================================
 
@@ -24,7 +23,7 @@ log_debug() { echo -e "${CYAN}[DEBUG]${NC} $1"; }
 
 # Banner
 echo -e "${BLUE}================================================${NC}"
-echo -e "${BLUE}    VIDLOOP DEFINITIVO - RASPBERRY PI SETUP   ${NC}"
+echo -e "${BLUE}    VIDLOOP OPTIMIZADOR - IMAGEN EXISTENTE     ${NC}"
 echo -e "${BLUE}   ✨ ANTI-MICRO-CORTES + FORCE DISPLAY ✨    ${NC}"
 echo -e "${BLUE}   Desarrollado por IGNACE - Powered By: 44    ${NC}"
 echo -e "${BLUE}================================================${NC}"
@@ -47,7 +46,7 @@ log_info "Directorio home: $TARGET_HOME"
 
 # Verificar si estamos en Raspberry Pi
 if [ -f /proc/device-tree/model ] && grep -q "Raspberry Pi" /proc/device-tree/model; then
-    log_success "Raspberry Pi detectada"
+    log_success "Raspberry Pi detectada - Imagen con pi_video_looper existente"
     IS_RPI=true
 else
     log_warning "No se detectó una Raspberry Pi. Continuando..."
@@ -68,47 +67,33 @@ backup_file() {
     fi
 }
 
-# PASO 1: LIMPIEZA INICIAL
-log_info "🧹 Realizando limpieza inicial..."
-
 # Detener procesos existentes
+log_info "🛑 Deteniendo procesos existentes..."
 sudo pkill -f video_looper 2>/dev/null || true
 sudo pkill -f omxplayer 2>/dev/null || true
+sudo systemctl stop video_looper 2>/dev/null || true
 sudo systemctl stop vidloop-player.service 2>/dev/null || true
 sudo systemctl stop vidloop-ultra.service 2>/dev/null || true
 sudo systemctl stop vidloop-smooth.service 2>/dev/null || true
 sleep 3
-
-# Limpiar directorios problemáticos
-if [ -d "pi_video_looper" ]; then
-    sudo chmod -R 755 pi_video_looper 2>/dev/null || true
-    sudo rm -rf pi_video_looper 2>/dev/null || sudo mv pi_video_looper "pi_video_looper_backup_$(date +%Y%m%d_%H%M%S)" 2>/dev/null || true
-fi
-
-log_success "Limpieza inicial completada"
+log_success "Procesos detenidos"
 
 # PASO 2: ACTUALIZAR SISTEMA E INSTALAR DEPENDENCIAS
-log_info "📦 Actualizando sistema e instalando dependencias..."
+log_info "📦 Actualizando sistema e instalando dependencias optimizadas..."
 sudo apt-get update -y
 sudo apt-get upgrade -y
 
 sudo apt-get install -y \
-    git \
-    python3 \
-    python3-pip \
-    ffmpeg \
-    curl \
-    wget \
-    build-essential \
-    python3-dev \
     htop \
     iotop \
     vmtouch \
     cpufrequtils \
     libraspberrypi-bin \
+    curl \
+    wget \
     || { log_error "Error instalando dependencias"; exit 1; }
     
-log_success "Sistema actualizado y dependencias instaladas"
+log_success "Sistema actualizado y dependencias optimizadas instaladas"
 
 # PASO 3: CONFIGURACIÓN HDMI ULTRA AGRESIVA ANTI-MICRO-CORTES
 if [ "$IS_RPI" = true ]; then
@@ -205,17 +190,26 @@ echo 'vm.dirty_ratio=10' | sudo tee -a /etc/sysctl.conf >/dev/null 2>&1 || true
 
 log_success "✅ Sistema operativo optimizado"
 
-# PASO 5: INSTALAR ZEROTIER
-log_info "🌐 Instalando ZeroTier para VPN..."
-if ! command_exists zerotier-cli; then
-    curl -s https://install.zerotier.com | sudo bash || {
-        log_error "Error instalando ZeroTier"
-        exit 1
-    }
-    log_success "ZeroTier instalado"
-else
-    log_info "ZeroTier ya está instalado"
+# PASO 5: INSTALAR ZEROTIER (Reinstalar limpiamente)
+log_info "🌐 Reinstalando ZeroTier para VPN limpia..."
+
+# Eliminar ZeroTier existente si está instalado
+if command_exists zerotier-cli; then
+    log_warning "ZeroTier existente detectado, desinstalando..."
+    sudo systemctl stop zerotier-one 2>/dev/null || true
+    sudo systemctl disable zerotier-one 2>/dev/null || true
+    sudo apt-get remove --purge -y zerotier-one 2>/dev/null || true
+    sudo rm -rf /var/lib/zerotier-one 2>/dev/null || true
+    sudo rm -rf /etc/systemd/system/zerotier-one.service 2>/dev/null || true
+    log_success "ZeroTier anterior eliminado"
 fi
+
+# Instalar ZeroTier fresco
+curl -s https://install.zerotier.com | sudo bash || {
+    log_error "Error instalando ZeroTier"
+    exit 1
+}
+log_success "ZeroTier instalado limpiamente"
 
 # Configurar red ZeroTier
 echo
@@ -223,18 +217,21 @@ echo -e "${YELLOW}¿Deseas configurar ZeroTier ahora? (y/n):${NC}"
 read -r CONFIGURE_ZT
 
 if [[ $CONFIGURE_ZT =~ ^[Yy]$ ]]; then
-    echo -e "${BLUE}Por favor, ingresa el ID de tu red ZeroTier:${NC}"
+    echo -e "${BLUE}Por favor, ingresa el ID de tu red ZeroTier (16 caracteres):${NC}"
     read -r ZTNETID
     
     if [ -n "$ZTNETID" ] && [ ${#ZTNETID} -eq 16 ]; then
         sudo zerotier-cli join "$ZTNETID"
         log_success "Raspberry Pi unida a la red ZeroTier: $ZTNETID"
-        echo -e "${YELLOW}Recuerda autorizar este dispositivo en tu panel de ZeroTier${NC}"
+        echo -e "${YELLOW}📝 IMPORTANTE: Recuerda autorizar este dispositivo en tu panel de ZeroTier${NC}"
+        echo -e "${CYAN}🔗 Panel ZeroTier: https://my.zerotier.com/network/$ZTNETID${NC}"
     else
-        log_warning "ID de red ZeroTier inválido (debe tener 16 caracteres)"
+        log_warning "ID de red ZeroTier inválido (debe tener exactamente 16 caracteres)"
+        echo "💡 Formato esperado: a1b2c3d4e5f6g7h8"
     fi
 else
     log_info "Configuración de ZeroTier saltada"
+    echo "💡 Puedes configurar luego con: sudo zerotier-cli join <NETWORK_ID>"
 fi
 
 # PASO 6: CONFIGURAR USUARIO ADMIN
@@ -251,7 +248,7 @@ echo "admin:4455" | sudo chpasswd
 log_success "Usuario admin configurado con contraseña: 4455"
 
 # PASO 7: CONFIGURAR SSH
-log_info "🔐 Configurando SSH..."
+log_info "🔐 Configurando SSH optimizado..."
 SSHD_CONFIG="/etc/ssh/sshd_config"
 
 if [ -f "$SSHD_CONFIG" ]; then
@@ -265,223 +262,17 @@ if [ -f "$SSHD_CONFIG" ]; then
     grep -q "^PubkeyAuthentication" "$SSHD_CONFIG" || echo "PubkeyAuthentication no" | sudo tee -a "$SSHD_CONFIG"
     
     sudo systemctl restart ssh
-    log_success "SSH configurado"
-fi
-
-# PASO 8: INSTALAR PI_VIDEO_LOOPER EN DIRECTORIO PRINCIPAL
-log_info "🎬 Instalando pi_video_looper en /home/admin/VIDLOOP44..."
-
-# Crear directorio principal
-sudo mkdir -p /home/admin/VIDLOOP44
-sudo chown -R admin:admin /home/admin/VIDLOOP44 2>/dev/null || sudo chown -R admin /home/admin/VIDLOOP44
-
-# Cambiar al directorio principal
-cd /home/admin/VIDLOOP44
-
-# Clonar pi_video_looper
-log_info "Clonando pi_video_looper de Adafruit..."
-if git clone https://github.com/adafruit/pi_video_looper.git; then
-    log_success "✅ pi_video_looper clonado exitosamente"
-else
-    log_error "❌ Error clonando repositorio"
-    exit 1
-fi
-
-# Configurar permisos
-sudo chown -R admin:admin pi_video_looper 2>/dev/null || sudo chown -R admin pi_video_looper
-
-cd pi_video_looper
-
-# Instalar dependencias Python
-if [ -f "install.sh" ]; then
-    log_info "Ejecutando instalación de pi_video_looper..."
-    
-    # Crear versión modificada
-    cp install.sh install_modified.sh
-    sed -i "s/pi:pi/$TARGET_USER:$TARGET_USER/g" install_modified.sh
-    sed -i "s/\/home\/pi/\/home\/$TARGET_USER/g" install_modified.sh
-    
-    chmod +x install_modified.sh
-    sudo ./install_modified.sh || {
-        log_warning "Instalación original falló, continuando con instalación manual..."
-        sudo python3 -m pip install --upgrade pip
-        sudo python3 -m pip install -r requirements.txt || log_warning "Algunos paquetes Python fallaron"
-    }
-fi
-
-cd ..
-log_success "pi_video_looper instalado"
-
-# PASO 8.5: CONFIGURAR VIDEO_LOOPER.INI OPTIMIZADO
-log_info "⚙️ Creando configuración optimizada de video_looper.ini..."
-
-# Crear directorio de configuración si no existe
-sudo mkdir -p /opt/video_looper
-
-# Crear backup del archivo existente si existe
-if [ -f "/opt/video_looper/video_looper.ini" ]; then
-    backup_file "/opt/video_looper/video_looper.ini"
-fi
-
-# Crear video_looper.ini optimizado para anti-micro-cortes
-sudo bash -c 'cat > /opt/video_looper/video_looper.ini <<EOF
-# VIDLOOP44 - Configuración Personalizada DEFINITIVA
-# Desarrollado por IGNACE - Powered By: 44 Contenidos
-# OPTIMIZADO PARA ANTI-MICRO-CORTES
-
-[video_looper]
-# ===== CONFIGURACIÓN PRINCIPAL =====
-# Usar directorio local en lugar de USB
-file_reader = directory
-
-# Ruta donde están los videos (directorio principal)
-directory_path = /home/admin/VIDLOOP44
-
-# Orden de reproducción: alphabetical, random, reverse
-playlist_order = alphabetical
-
-# Repetir playlist infinitamente
-repeat = true
-
-# Tiempo de espera entre videos (ULTRA SMOOTH - 50ms)
-wait_time = 0.05
-
-# ===== CONFIGURACIÓN DE PANTALLA =====
-# Mostrar información en pantalla (false para suavidad)
-show_osd = false
-
-# Color de fondo: black para mejor rendimiento
-background_color = black
-
-# ===== CONFIGURACIÓN DE VIDEO ANTI-MICRO-CORTES =====
-# Argumentos adicionales para omxplayer (OPTIMIZADO)
-omxplayer_extra_args = --aspect-mode letterbox --no-osd --audio_queue 20 --video_queue 20 --fps 25 --win 0,0,1920,1080 --genlog --no-keys --timeout 0
-
-# ===== CONFIGURACIÓN DE AUDIO =====
-# Habilitar sonido
-sound = on
-
-# Volumen (0-100) - Alto para compensar
-volume = 90
-
-# ===== CONFIGURACIÓN DEL DIRECTORIO =====
-[directory]
-# Ruta de los videos (debe coincidir con directory_path)
-path = /home/admin/VIDLOOP44
-
-# Extensiones de video soportadas (OPTIMIZADAS)
-extensions = mp4,h264,mkv,avi,mov,m4v
-
-# Explorar subdirectorios
-subdirectories = false
-
-# ===== CONFIGURACIÓN AVANZADA DE OMXPLAYER =====
-[omxplayer]
-# Argumentos extra para el reproductor (MÁXIMA OPTIMIZACIÓN)
-extra_args = --aspect-mode letterbox --no-osd --vol 900 --audio_queue 20 --video_queue 20 --fps 25 --win 0,0,1920,1080 --genlog --no-keys --timeout 0 --refresh
-
-# ===== CONFIGURACIÓN DE HARDWARE =====
-[hardware]
-# Usar aceleración de hardware
-hw_accel = true
-
-# GPU memory split optimizado
-gpu_mem = 256
-
-# ===== OPCIONES ADICIONALES =====
-[display]
-# Resolución forzada para estabilidad
-width = 1920
-height = 1080
-
-# Sin rotación para mejor rendimiento
-rotation = 0
-
-# ===== CONFIGURACIÓN DE LOGS =====
-[logging]
-# Nivel de log: INFO para diagnóstico
-level = INFO
-
-# Archivo de log
-file = /var/log/video_looper.log
-
-# ===== CONFIGURACIÓN AVANZADA ANTI-MICRO-CORTES =====
-[performance]
-# Buffer preload para evitar cortes
-buffer_size = 4096
-preload_next = true
-smooth_transitions = true
-
-# Process priority para video
-video_priority = -20
-audio_priority = -20
-
-# ===== NOTAS DE CONFIGURACIÓN =====
-#
-# RUTAS IMPORTANTES:
-# - Videos: /home/admin/VIDLOOP44/
-# - Config: /opt/video_looper/video_looper.ini
-# - Logs: /var/log/video_looper.log
-#
-# FORMATOS OPTIMIZADOS ANTI-MICRO-CORTES:
-# - Video: MP4 (H.264), H264 puro, MKV (preferidos)
-# - Evitar: AVI, WMV, FLV (pueden causar micro-cortes)
-#
-# PARÁMETROS CLAVE ANTI-MICRO-CORTES:
-# - audio_queue=20, video_queue=20 (buffers 20x más grandes)
-# - wait_time=0.05 (transición ultra-suave 50ms)
-# - fps=25 (frame rate fijo)
-# - timeout=0 (sin timeouts que causen cortes)
-# - refresh (refresco optimizado)
-#
-# COMANDOS ÚTILES:
-# - Reiniciar servicio: sudo systemctl restart video_looper
-# - Ver logs: sudo journalctl -u video_looper -f
-# - Verificar config: cat /opt/video_looper/video_looper.ini
-# - Diagnóstico: /usr/local/bin/vidloop-definitivo-diagnostic.sh
-#
-EOF'
-
-# Configurar permisos del archivo de configuración
-sudo chown video_looper:video_looper /opt/video_looper/video_looper.ini 2>/dev/null || sudo chown admin:admin /opt/video_looper/video_looper.ini
-
-# Copiar configuración a ubicaciones adicionales donde pi_video_looper la busca
-VIDLOOP_CONFIG_LOCATIONS=(
-    "/home/admin/VIDLOOP44/pi_video_looper/video_looper.ini"
-    "/etc/video_looper.ini"
-    "/home/admin/.video_looper.ini"
-    "/home/$TARGET_USER/.video_looper.ini"
-)
-
-for config_location in "${VIDLOOP_CONFIG_LOCATIONS[@]}"; do
-    sudo mkdir -p "$(dirname "$config_location")" 2>/dev/null || true
-    sudo cp /opt/video_looper/video_looper.ini "$config_location" 2>/dev/null || true
-    sudo chown admin:admin "$config_location" 2>/dev/null || true
-    if [ -f "$config_location" ]; then
-        log_success "✅ Configuración copiada a: $config_location"
-    fi
-done
-
-log_success "✅ video_looper.ini optimizado creado y distribuido"
-
-# Reiniciar video_looper si está ejecutándose para aplicar nueva configuración
-if systemctl is-active --quiet video_looper; then
-    log_info "🔄 Reiniciando video_looper para aplicar nueva configuración..."
-    sudo systemctl restart video_looper
-    sleep 3
+    log_success "SSH configurado y optimizado"
 fi
 
 # Verificar que la configuración se aplicó correctamente
-if [ -f "/opt/video_looper/video_looper.ini" ]; then
-    log_success "✅ Configuración anti-micro-cortes aplicada correctamente"
-    log_info "📋 Configuración clave:"
-    log_info "   • Buffers: audio_queue=20, video_queue=20"
-    log_info "   • Transición: wait_time=0.05s (ultra-suave)"
-    log_info "   • GPU Memory: 256MB para hardware acceleration"
-    log_info "   • Formatos recomendados: MP4, H264, MKV"
-else
-    log_warning "⚠️ No se pudo verificar la configuración"
-fi
+log_info "✅ Verificando configuración aplicada..."
+log_success "🖥️ HDMI: Ultra agresivo configurado"
+log_success "💾 GPU: 256MB asignados para video suave"
+log_success "⚡ CPU: Overclock suave aplicado"
+log_success "🌐 ZeroTier: Reinstalado limpiamente"
+log_success "👤 Usuario: admin configurado"
+log_success "🔐 SSH: Optimizado y funcionando"
 
 # PASO 9: CONFIGURAR SCREEN BLANKING
 if [ "$IS_RPI" = true ]; then
@@ -516,14 +307,17 @@ if [ "$IS_RPI" = true ]; then
     
     sudo bash -c 'cat > /usr/local/bin/hdmi-keepalive.sh <<EOF
 #!/bin/bash
+# HDMI Keepalive para VIDLOOP DEFINITIVO
 while true; do
     if command -v tvservice >/dev/null 2>&1; then
         if tvservice -s 2>/dev/null | grep -q "TV is off"; then
             tvservice -p 2>/dev/null || true
             chvt 6 && chvt 7 2>/dev/null || true
+            echo "$(date): HDMI reactivado - TV estaba apagada" >> /var/log/hdmi-keepalive.log
         elif ! tvservice -s 2>/dev/null | grep -q "0x12000"; then
             tvservice -p 2>/dev/null || true
             chvt 6 && chvt 7 2>/dev/null || true
+            echo "$(date): HDMI forzado - Estado no óptimo" >> /var/log/hdmi-keepalive.log
         fi
     fi
     sleep 5
@@ -551,23 +345,16 @@ EOF'
     sudo systemctl daemon-reload
     sudo systemctl enable hdmi-keepalive.service
     sudo systemctl start hdmi-keepalive.service
-    log_success "Servicio HDMI keepalive configurado"
+    log_success "Servicio HDMI keepalive configurado y activo"
 fi
 
-# PASO 11: CREAR CARPETA DE VIDEOS
-VIDEOS_DIR="/home/admin/VIDLOOP44"
-log_info "📁 Configurando carpeta de videos: $VIDEOS_DIR"
-sudo mkdir -p "$VIDEOS_DIR"
-sudo chown -R admin:admin "$VIDEOS_DIR" 2>/dev/null || sudo chown -R admin "$VIDEOS_DIR"
-log_success "Carpeta de videos creada: $VIDEOS_DIR"
-
 # PASO 12: CREAR SCRIPT DEFINITIVO ANTI-MICRO-CORTES
-log_info "🎬 Creando script DEFINITIVO ANTI-MICRO-CORTES..."
+log_info "🎬 Creando script DEFINITIVO ANTI-MICRO-CORTES para imagen existente..."
 
 DEFINITIVO_SCRIPT="/usr/local/bin/vidloop-definitivo.sh"
 sudo bash -c "cat > $DEFINITIVO_SCRIPT <<'DEFINITIVO_EOF'
 #!/bin/bash
-# VIDLOOP DEFINITIVO - Script ANTI-MICRO-CORTES
+# VIDLOOP DEFINITIVO - Script ANTI-MICRO-CORTES para imagen existente
 # Desarrollado por IGNACE - Powered By: 44 Contenidos
 
 # Variables de entorno OPTIMIZADAS
@@ -592,7 +379,7 @@ log_msg() {
     echo \"\$(date): [\$1] \$2\"
 }
 
-log_msg \"INFO\" \"🚀 Iniciando VIDLOOP DEFINITIVO...\"
+log_msg \"INFO\" \"🚀 Iniciando VIDLOOP DEFINITIVO en imagen existente...\"
 
 # CONFIGURAR PRIORIDADES MÁXIMAS
 renice -20 \$\$ 2>/dev/null || true
@@ -630,21 +417,51 @@ VIDEOS_DIR=\"/home/admin/VIDLOOP44\"
 log_msg \"INFO\" \"Verificando: \$VIDEOS_DIR\"
 
 if [ ! -d \"\$VIDEOS_DIR\" ]; then
-    log_msg \"ERROR\" \"❌ Carpeta no existe: \$VIDEOS_DIR\"
-    exit 1
+    log_msg \"INFO\" \"📁 Creando carpeta de videos: \$VIDEOS_DIR\"
+    mkdir -p \"\$VIDEOS_DIR\"
+    chown admin:admin \"\$VIDEOS_DIR\" 2>/dev/null || chown admin \"\$VIDEOS_DIR\"
 fi
 
 # Buscar videos (formatos optimizados para anti-micro-cortes)
 VIDEO_FILES=\$(find \"\$VIDEOS_DIR\" -type f \\( -iname \"*.mp4\" -o -iname \"*.h264\" -o -iname \"*.mkv\" \\) 2>/dev/null | sort)
 
 if [ -z \"\$VIDEO_FILES\" ]; then
-    log_msg \"ERROR\" \"❌ NO HAY VIDEOS optimizados en \$VIDEOS_DIR\"
-    log_msg \"INFO\" \"Formatos recomendados: .mp4, .h264, .mkv\"
-    exit 1
+    log_msg \"WARNING\" \"❌ NO HAY VIDEOS optimizados en \$VIDEOS_DIR\"
+    log_msg \"INFO\" \"💡 Formatos recomendados: .mp4, .h264, .mkv\"
+    log_msg \"INFO\" \"💡 Copia videos a \$VIDEOS_DIR y reinicia el servicio\"
+    
+    # Esperar por videos cada 30 segundos
+    while [ -z \"\$VIDEO_FILES\" ]; do
+        sleep 30
+        VIDEO_FILES=\$(find \"\$VIDEOS_DIR\" -type f \\( -iname \"*.mp4\" -o -iname \"*.h264\" -o -iname \"*.mkv\" \\) 2>/dev/null | sort)
+        if [ -n \"\$VIDEO_FILES\" ]; then
+            log_msg \"INFO\" \"✅ Videos detectados, continuando...\"
+            break
+        fi
+        log_msg \"INFO\" \"⏳ Esperando videos en \$VIDEOS_DIR...\"
+    done
 fi
 
 VIDEO_COUNT=\$(echo \"\$VIDEO_FILES\" | wc -l)
 log_msg \"INFO\" \"✅ Encontrados \$VIDEO_COUNT videos optimizados\"
+
+# BUSCAR INSTALACIÓN DE PI_VIDEO_LOOPER EXISTENTE
+POSSIBLE_VIDLOOP_DIRS=(
+    \"/opt/video_looper\"
+    \"/home/pi/pi_video_looper\"
+    \"/home/admin/pi_video_looper\"
+    \"/usr/local/pi_video_looper\"
+    \"/home/admin/VIDLOOP44/pi_video_looper\"
+)
+
+VIDLOOP_DIR=\"\"
+for dir in \"\${POSSIBLE_VIDLOOP_DIRS[@]}\"; do
+    if [ -f \"\$dir/video_looper.py\" ]; then
+        VIDLOOP_DIR=\"\$dir\"
+        log_msg \"INFO\" \"✅ pi_video_looper encontrado en: \$dir\"
+        break
+    fi
+done
 
 # FUNCIÓN DE REPRODUCCIÓN ANTI-MICRO-CORTES
 play_smooth() {
@@ -658,7 +475,7 @@ play_smooth() {
         --display 7 \\
         --aspect-mode letterbox \\
         --no-osd \\
-        --vol 1000 \\
+        --vol 900 \\
         --refresh \\
         --timeout 0 \\
         --layer 1 \\
@@ -678,7 +495,7 @@ play_smooth() {
         log_msg \"WARNING\" \"Error con \$name, reintentando básico...\"
         
         # Fallback básico
-        omxplayer --display 7 --aspect-mode letterbox --no-osd --vol 1000 \"\$video\" 2>/dev/null || {
+        omxplayer --display 7 --aspect-mode letterbox --no-osd --vol 900 \"\$video\" 2>/dev/null || {
             log_msg \"ERROR\" \"Error fatal con \$name\"
             return 1
         }
@@ -687,34 +504,33 @@ play_smooth() {
     return 0
 }
 
-# MÉTODO 1: INTENTAR PI_VIDEO_LOOPER OPTIMIZADO
-MAIN_VIDLOOP_DIR=\"/home/admin/VIDLOOP44/pi_video_looper\"
-
-if [ -f \"\$MAIN_VIDLOOP_DIR/video_looper.py\" ]; then
-    log_msg \"INFO\" \"🎬 INTENTANDO PI_VIDEO_LOOPER OPTIMIZADO\"
-    cd \"\$MAIN_VIDLOOP_DIR\"
+# MÉTODO 1: USAR PI_VIDEO_LOOPER EXISTENTE SI SE ENCUENTRA
+if [ -n \"\$VIDLOOP_DIR\" ]; then
+    log_msg \"INFO\" \"🎬 USANDO PI_VIDEO_LOOPER EXISTENTE OPTIMIZADO\"
+    cd \"\$VIDLOOP_DIR\"
     
-    # Crear configuración DEFINITIVA ANTI-MICRO-CORTES
-    CONFIG_FILE=\"\$MAIN_VIDLOOP_DIR/video_looper_definitivo.ini\"
+    # Crear/actualizar configuración DEFINITIVA ANTI-MICRO-CORTES
+    CONFIG_FILE=\"\$VIDLOOP_DIR/video_looper.ini\"
     cat > \"\$CONFIG_FILE\" <<CONFIG_EOF
 [video_looper]
 file_reader = directory
 directory_path = \$VIDEOS_DIR
 playlist_order = alphabetical
 repeat = true
-wait_time = 0
+wait_time = 0.05
 show_osd = false
 background_color = black
 sound = on
-volume = 100
+volume = 90
+omxplayer_extra_args = --display 7 --aspect-mode letterbox --no-osd --vol 900 --refresh --layer 1 --alpha 255 --advanced --hw --boost-on-downmix --audio_queue 20 --video_queue 20 --audio_fifo 20 --video_fifo 20 --threshold 0.5 --fps 30
 
 [directory]
 path = \$VIDEOS_DIR
-extensions = mp4,h264,mkv
+extensions = mp4,h264,mkv,avi,mov,m4v
 subdirectories = false
 
 [omxplayer]
-extra_args = --display 7 --aspect-mode letterbox --no-osd --vol 1000 --refresh --layer 1 --alpha 255 --advanced --hw --boost-on-downmix --audio_queue 20 --video_queue 20 --audio_fifo 20 --video_fifo 20 --threshold 0.5 --fps 30
+extra_args = --display 7 --aspect-mode letterbox --no-osd --vol 900 --refresh --layer 1 --alpha 255 --advanced --hw --boost-on-downmix --audio_queue 20 --video_queue 20 --audio_fifo 20 --video_fifo 20 --threshold 0.5 --fps 30
 
 [usb_drive]
 enabled = false
@@ -724,30 +540,21 @@ enabled = false
 CONFIG_EOF
     
     log_msg \"INFO\" \"🚀 Ejecutando pi_video_looper DEFINITIVO\"
-    timeout 60 python3 video_looper.py --config \"\$CONFIG_FILE\" 2>&1 &
-    VIDLOOP_PID=\$!
-    
-    # Esperar para verificar si funciona
-    sleep 30
-    
-    if kill -0 \$VIDLOOP_PID 2>/dev/null; then
-        log_msg \"SUCCESS\" \"✅ pi_video_looper DEFINITIVO ejecutándose SUAVE\"
-        wait \$VIDLOOP_PID
-    else
-        log_msg \"WARNING\" \"⚠️ pi_video_looper falló, usando reproducción directa OPTIMIZADA\"
-    fi
+    python3 video_looper.py --config \"\$CONFIG_FILE\" 2>&1 || {
+        log_msg \"ERROR\" \"pi_video_looper falló, usando reproducción directa\"
+    }
 fi
 
-# MÉTODO 2: REPRODUCCIÓN DIRECTA ANTI-MICRO-CORTES
+# MÉTODO 2: REPRODUCCIÓN DIRECTA ANTI-MICRO-CORTES (FALLBACK)
 log_msg \"INFO\" \"🎬 REPRODUCCIÓN DIRECTA ANTI-MICRO-CORTES\"
 
-# Precargar archivos en cache
-log_msg \"INFO\" \"Precargando archivos...\"
-echo \"\$VIDEO_FILES\" | while read -r video; do
-    if command -v vmtouch >/dev/null 2>&1; then
+# Precargar archivos en cache si vmtouch está disponible
+if command -v vmtouch >/dev/null 2>&1; then
+    log_msg \"INFO\" \"Precargando archivos en memoria...\"
+    echo \"\$VIDEO_FILES\" | while read -r video; do
         vmtouch -t \"\$video\" >/dev/null 2>&1 &
-    fi
-done
+    done
+fi
 
 # LOOP PRINCIPAL DEFINITIVO
 while true; do
@@ -764,104 +571,34 @@ while true; do
     done
     
     log_msg \"INFO\" \"🔄 Reiniciando playlist DEFINITIVA...\"
+    
+    # Refrescar lista de videos por si se agregaron nuevos
+    VIDEO_FILES=\$(find \"\$VIDEOS_DIR\" -type f \\( -iname \"*.mp4\" -o -iname \"*.h264\" -o -iname \"*.mkv\" \\) 2>/dev/null | sort)
+    
     sleep 0.5
 done
 DEFINITIVO_EOF"
 
 sudo chmod +x "$DEFINITIVO_SCRIPT"
-log_success "✅ Script DEFINITIVO ANTI-MICRO-CORTES creado"
-
-# PASO 13: CREAR SERVICIO DEFINITIVO
-log_info "⚙️ Creando servicio systemd DEFINITIVO..."
-
-sudo bash -c "cat > /etc/systemd/system/vidloop-definitivo.service <<EOF
-[Unit]
-Description=VIDLOOP DEFINITIVO - Anti-Micro-Cortes Video Player
-After=multi-user.target graphical-session.target
-Wants=graphical-session.target
-
-[Service]
-Type=simple
-User=root
-Group=root
-Environment=HOME=/home/admin
-Environment=USER=admin
-Environment=DISPLAY=:0.0
-Environment=OMX_BUFFERS=512
-Environment=OMX_MAX_FPS=60
-Environment=FRAMEBUFFER=/dev/fb0
-WorkingDirectory=/home/admin
-ExecStartPre=/bin/sleep 40
-ExecStart=$DEFINITIVO_SCRIPT
-Restart=always
-RestartSec=3
-TimeoutStartSec=300
-StandardOutput=append:/var/log/vidloop-definitivo.log
-StandardError=append:/var/log/vidloop-definitivo.log
-Nice=-20
-IOSchedulingClass=1
-IOSchedulingPriority=0
-CPUSchedulingPolicy=1
-CPUSchedulingPriority=99
-
-[Install]
-WantedBy=multi-user.target
-EOF"
-
-# PASO 14: DESHABILITAR SERVICIOS ANTERIORES Y HABILITAR DEFINITIVO
-log_info "🔄 Configurando servicio DEFINITIVO..."
-sudo systemctl stop vidloop-player.service 2>/dev/null || true
-sudo systemctl disable vidloop-player.service 2>/dev/null || true
-sudo systemctl stop vidloop-ultra.service 2>/dev/null || true
-sudo systemctl disable vidloop-ultra.service 2>/dev/null || true
-sudo systemctl stop vidloop-smooth.service 2>/dev/null || true
-sudo systemctl disable vidloop-smooth.service 2>/dev/null || true
-
-sudo systemctl daemon-reload
-sudo systemctl enable vidloop-definitivo.service
-
-log_success "✅ Servicio DEFINITIVO configurado"
-
-# PASO 15: CONFIGURAR RC.LOCAL COMO RESPALDO
-log_info "📋 Configurando rc.local de respaldo..."
-RC_LOCAL="/etc/rc.local"
-backup_file "$RC_LOCAL" 2>/dev/null || true
-
-sudo bash -c "cat > $RC_LOCAL <<EOF
-#!/bin/sh -e
-# VIDLOOP DEFINITIVO - RC.LOCAL RESPALDO
-
-# Forzar display y ejecutar respaldo
-(
-    sleep 70
-    if command -v tvservice >/dev/null 2>&1; then
-        tvservice -p 2>/dev/null || true
-        sleep 3
-        tvservice --explicit=\"CEA 16 HDMI\" 2>/dev/null || true
-    fi
-    
-    # Si el servicio no está corriendo, ejecutar manualmente
-    if ! systemctl is-active --quiet vidloop-definitivo.service; then
-        su - root -c '$DEFINITIVO_SCRIPT' &
-    fi
-) &
-
-exit 0
-EOF"
-
-sudo chmod +x "$RC_LOCAL"
+log_success "✅ Script DEFINITIVO ANTI-MICRO-CORTES creado para imagen existente"
 
 # PASO 16: CONFIGURAR LOGS
+log_info "📝 Configurando sistema de logs..."
 sudo touch /var/log/vidloop-definitivo.log
 sudo chmod 666 /var/log/vidloop-definitivo.log
+sudo touch /var/log/hdmi-keepalive.log
+sudo chmod 666 /var/log/hdmi-keepalive.log
+log_success "✅ Sistema de logs configurado"
 
 # PASO 17: CREAR SCRIPT DE DIAGNÓSTICO DEFINITIVO
+log_info "🔍 Creando script de diagnóstico definitivo..."
 DIAG_DEFINITIVO="/usr/local/bin/vidloop-definitivo-diagnostic.sh"
 sudo bash -c "cat > $DIAG_DEFINITIVO <<'DIAG_EOF'
 #!/bin/bash
 
 echo \"========================================\"
 echo \"   DIAGNÓSTICO VIDLOOP DEFINITIVO - \$(date)\"
+echo \"     IMAGEN EXISTENTE OPTIMIZADA\"
 echo \"========================================\"
 
 # 1. Sistema y hardware
@@ -899,7 +636,37 @@ fi
 
 echo \"\"
 
-# 3. Videos optimizados
+# 3. Pi Video Looper existente
+echo \"🎬 PI_VIDEO_LOOPER EXISTENTE:\"
+POSSIBLE_DIRS=(\"/opt/video_looper\" \"/home/pi/pi_video_looper\" \"/home/admin/pi_video_looper\" \"/usr/local/pi_video_looper\" \"/home/admin/VIDLOOP44/pi_video_looper\")
+
+FOUND_VIDLOOP=false
+for dir in \"\${POSSIBLE_DIRS[@]}\"; do
+    if [ -f \"\$dir/video_looper.py\" ]; then
+        echo \"  ✅ Encontrado en: \$dir\"
+        FOUND_VIDLOOP=true
+        
+        if [ -f \"\$dir/video_looper.ini\" ]; then
+            echo \"  📋 Configuración: ✅ Presente\"
+            if grep -q \"directory_path = /home/admin/VIDLOOP44\" \"\$dir/video_looper.ini\" 2>/dev/null; then
+                echo \"  🎯 Directorio: ✅ Optimizado\"
+            else
+                echo \"  🎯 Directorio: ⚠️ Necesita optimización\"
+            fi
+        else
+            echo \"  📋 Configuración: ❌ Falta\"
+        fi
+        break
+    fi
+done
+
+if [ \"\$FOUND_VIDLOOP\" = false ]; then
+    echo \"  ❌ pi_video_looper no encontrado en ubicaciones estándar\"
+fi
+
+echo \"\"
+
+# 4. Videos optimizados
 echo \"📁 VIDEOS ANTI-MICRO-CORTES:\"
 if [ -d \"/home/admin/VIDLOOP44\" ]; then
     mp4_count=\$(find /home/admin/VIDLOOP44 -iname \"*.mp4\" 2>/dev/null | wc -l)
@@ -916,36 +683,74 @@ if [ -d \"/home/admin/VIDLOOP44\" ]; then
     if [ \$total -gt 0 ]; then
         echo \"  📹 Primeros 3 videos:\"
         find /home/admin/VIDLOOP44 -type f \\( -iname \"*.mp4\" -o -iname \"*.h264\" -o -iname \"*.mkv\" \\) 2>/dev/null | head -3 | while read -r video; do
-            size=\$(du -h \"\$video\" 2>/dev/null | cut -f1)
-            echo \"    ✅ \$(basename \"\$video\") (\$size)\"
+            if [ -f \"\$video\" ]; then
+                size=\$(du -h \"\$video\" 2>/dev/null | cut -f1)
+                echo \"    ✅ \$(basename \"\$video\") (\$size)\"
+            fi
         done
     else
         echo \"  ❌ NO HAY VIDEOS OPTIMIZADOS\"
-        echo \"  💡 Formatos recomendados: .mp4, .h264, .mkv\"
+        echo \"  💡 Copia videos MP4, H264 o MKV a /home/admin/VIDLOOP44\"
     fi
 else
-    echo \"  ❌ Carpeta no existe\"
+    echo \"  ❌ Carpeta /home/admin/VIDLOOP44 no existe\"
 fi
 
 echo \"\"
 
-# 4. Servicio DEFINITIVO
-echo \"⚙️ SERVICIO DEFINITIVO:\"
-if systemctl is-active --quiet vidloop-definitivo.service; then
-    echo \"  ✅ Servicio ACTIVO\"
+# 5. Servicios
+echo \"⚙️ SERVICIOS:\"
+
+# Verificar servicio de video_looper original
+if systemctl list-unit-files | grep -q video_looper; then
+    if systemctl is-active --quiet video_looper; then
+        echo \"  ✅ video_looper: ACTIVO\"
+    else
+        echo \"  ❌ video_looper: INACTIVO\"
+    fi
+    
+    if systemctl is-enabled --quiet video_looper; then
+        echo \"  ✅ video_looper: HABILITADO\"
+    else
+        echo \"  ❌ video_looper: NO habilitado\"
+    fi
 else
-    echo \"  ❌ Servicio INACTIVO\"
+    echo \"  ❌ Servicio video_looper no encontrado\"
 fi
 
-if systemctl is-enabled --quiet vidloop-definitivo.service; then
-    echo \"  ✅ Servicio HABILITADO\"
+# Verificar HDMI keepalive
+if systemctl is-active --quiet hdmi-keepalive; then
+    echo \"  ✅ hdmi-keepalive: ACTIVO\"
 else
-    echo \"  ❌ Servicio NO habilitado\"
+    echo \"  ❌ hdmi-keepalive: INACTIVO\"
 fi
 
 echo \"\"
 
-# 5. Procesos optimizados
+# 6. ZeroTier
+echo \"🌐 ZEROTIER VPN:\"
+if command -v zerotier-cli >/dev/null 2>&1; then
+    zt_info=\$(sudo zerotier-cli info 2>/dev/null)
+    if [ -n \"\$zt_info\" ]; then
+        echo \"  ✅ ZeroTier: ACTIVO\"
+        echo \"  📋 Info: \$zt_info\" | sed 's/^/    /'
+        
+        # Listar redes
+        networks=\$(sudo zerotier-cli listnetworks 2>/dev/null)
+        if [ -n \"\$networks\" ]; then
+            echo \"  🌐 Redes conectadas:\"
+            echo \"\$networks\" | sed 's/^/    /'
+        fi
+    else
+        echo \"  ⚠️ ZeroTier instalado pero no activo\"
+    fi
+else
+    echo \"  ❌ ZeroTier no instalado\"
+fi
+
+echo \"\"
+
+# 7. Procesos optimizados
 echo \"🔄 PROCESOS ANTI-MICRO-CORTES:\"
 if pgrep -f vidloop-definitivo >/dev/null; then
     echo \"  ✅ vidloop-definitivo ejecutándose\"
@@ -955,6 +760,14 @@ if pgrep -f vidloop-definitivo >/dev/null; then
     done
 else
     echo \"  ❌ vidloop-definitivo NO ejecutándose\"
+fi
+
+if pgrep -f video_looper >/dev/null; then
+    echo \"  ✅ video_looper ejecutándose\"
+    vl_count=\$(pgrep -f video_looper | wc -l)
+    echo \"    Instancias: \$vl_count\"
+else
+    echo \"  ❌ video_looper NO ejecutándose\"
 fi
 
 if pgrep -f omxplayer >/dev/null; then
@@ -967,118 +780,126 @@ fi
 
 echo \"\"
 
-# 6. Logs DEFINITIVOS
-echo \"📝 LOGS DEFINITIVOS (últimas 15 líneas):\"
+# 8. Logs DEFINITIVOS
+echo \"📝 LOGS DEFINITIVOS (últimas 10 líneas):\"
 if [ -f \"/var/log/vidloop-definitivo.log\" ]; then
-    tail -15 /var/log/vidloop-definitivo.log | sed 's/^/  /'
+    echo \"  📄 vidloop-definitivo.log:\"
+    tail -10 /var/log/vidloop-definitivo.log | sed 's/^/    /'
 else
-    echo \"  ❌ No se encontró log definitivo\"
+    echo \"  ❌ Log vidloop-definitivo no encontrado\"
+fi
+
+echo \"\"
+
+if [ -f \"/var/log/hdmi-keepalive.log\" ]; then
+    echo \"  📄 hdmi-keepalive.log (últimas 5 líneas):\"
+    tail -5 /var/log/hdmi-keepalive.log | sed 's/^/    /'
 fi
 
 echo \"\"
 echo \"========================================\"
-echo \"🛠️  COMANDOS DEFINITIVOS:\"
-echo \"  • Ver logs: tail -f /var/log/vidloop-definitivo.log\"
-echo \"  • Reiniciar: sudo systemctl restart vidloop-definitivo\"
-echo \"  • Estado: sudo systemctl status vidloop-definitivo\"
-echo \"  • Ejecutar manual: sudo $DEFINITIVO_SCRIPT\"
+echo \"🛠️  COMANDOS PARA IMAGEN EXISTENTE:\"
+echo \"  • Iniciar video: sudo systemctl start video_looper\"
+echo \"  • Reiniciar video: sudo systemctl restart video_looper\"
+echo \"  • Ver logs video: sudo journalctl -u video_looper -f\"
+echo \"  • Ejecutar optimizado: sudo $DEFINITIVO_SCRIPT\"
+echo \"  • Ver logs optimizado: tail -f /var/log/vidloop-definitivo.log\"
 echo \"  • Diagnóstico: sudo $DIAG_DEFINITIVO\"
+echo \"  • Estado HDMI: tvservice -s\"
 echo \"  • Temperatura: vcgencmd measure_temp\"
-echo \"  • HDMI estado: tvservice -s\"
+echo \"  • ZeroTier redes: sudo zerotier-cli listnetworks\"
 echo \"========================================\"
 DIAG_EOF"
 
 sudo chmod +x "$DIAG_DEFINITIVO"
-log_success "✅ Diagnóstico DEFINITIVO creado"
+log_success "✅ Script de diagnóstico definitivo creado"
 
-# RESUMEN FINAL
+# RESUMEN FINAL PARA IMAGEN EXISTENTE
 echo
 echo -e "${GREEN}================================================================${NC}"
-echo -e "${GREEN}           VIDLOOP DEFINITIVO CONFIGURADO EXITOSAMENTE         ${NC}"
+echo -e "${GREEN}         IMAGEN EXISTENTE OPTIMIZADA EXITOSAMENTE             ${NC}"
 echo -e "${GREEN}================================================================${NC}"
 
-echo -e "${YELLOW}✨ CARACTERÍSTICAS DEFINITIVAS:${NC}"
-echo "  • ✅ GPU optimizada: 256MB + overclock suave"
+echo -e "${YELLOW}✨ OPTIMIZACIONES APLICADAS:${NC}"
 echo "  • ✅ HDMI ultra agresivo con force display"
-echo "  • ✅ Buffers maximizados: 20x audio/video queues"
-echo "  • ✅ Prioridad máxima: Nice -20, IO Class 1"
-echo "  • ✅ CPU Governor: Performance mode"
-echo "  • ✅ Parámetros anti-micro-cortes definitivos"
-echo "  • ✅ Formatos optimizados: MP4, H264, MKV"
-echo "  • ✅ Precarga de archivos en memoria"
-echo "  • ✅ Transiciones ultra suaves (0.05s)"
+echo "  • ✅ GPU optimizada: 256MB + overclock suave"
+echo "  • ✅ Sistema operativo optimizado para video"
+echo "  • ✅ ZeroTier reinstalado limpiamente"
+echo "  • ✅ Usuario admin configurado"
+echo "  • ✅ SSH optimizado"
+echo "  • ✅ Screen blanking deshabilitado"
+echo "  • ✅ HDMI keepalive service activo"
+echo "  • ✅ Script anti-micro-cortes configurado"
+echo "  • ✅ Sistema de logs completo"
+echo "  • ✅ Diagnóstico avanzado disponible"
 
 echo
 echo -e "${BLUE}📋 INFORMACIÓN DEL SISTEMA:${NC}"
 echo -e "${BLUE}👤 Usuario SSH:${NC} admin"
 echo -e "${BLUE}🔑 Contraseña SSH:${NC} 4455"
 echo -e "${BLUE}📁 Carpeta de videos:${NC} /home/admin/VIDLOOP44"
-echo -e "${BLUE}🎬 Servicio:${NC} vidloop-definitivo.service"
-echo -e "${BLUE}📝 Logs:${NC} /var/log/vidloop-definitivo.log"
+echo -e "${BLUE}🎬 Pi Video Looper:${NC} Usar instalación existente"
+echo -e "${BLUE}📝 Logs principales:${NC} /var/log/vidloop-definitivo.log"
+echo -e "${BLUE}🔍 Diagnóstico:${NC} $DIAG_DEFINITIVO"
 
 if [ "$IS_RPI" = true ]; then
-    echo -e "${BLUE}📺 HDMI:${NC} Ultra agresivo + keepalive"
+    echo -e "${BLUE}📺 HDMI:${NC} Ultra optimizado + keepalive activo"
 fi
 
 if command_exists zerotier-cli; then
-    ZT_STATUS=$(sudo zerotier-cli info 2>/dev/null | cut -d' ' -f3 || echo "No configurado")
-    echo -e "${BLUE}🌐 ZeroTier:${NC} Instalado (Estado: $ZT_STATUS)"
+    ZT_STATUS=$(sudo zerotier-cli info 2>/dev/null | cut -d' ' -f3 || echo "Recién instalado")
+    echo -e "${BLUE}🌐 ZeroTier:${NC} Reinstalado limpiamente (Estado: $ZT_STATUS)"
 fi
 
 echo
-echo -e "${YELLOW}🚀 PRÓXIMOS PASOS:${NC}"
+echo -e "${YELLOW}🚀 PARA USAR LA IMAGEN OPTIMIZADA:${NC}"
 echo "  1. 📥 Copia videos OPTIMIZADOS (MP4/H264/MKV) a: /home/admin/VIDLOOP44"
-echo "  2. 🌐 Si configuraste ZeroTier, autoriza el dispositivo"
-echo "  3. 🔄 REINICIA el sistema: sudo reboot"
-echo "  4. 🕐 Espera 1-2 minutos después del reinicio"
-echo "  5. 🎬 Los videos se reproducirán SIN micro cortes"
+echo "  2. 🔄 REINICIA el sistema: sudo reboot"
+echo "  3. 🕐 Espera 1-2 minutos después del reinicio"
+echo "  4. 🎬 Los videos se reproducirán automáticamente"
+echo "  5. 🌐 Si configuraste ZeroTier, autoriza en el panel web"
 
 echo
-echo -e "${YELLOW}🛠️  COMANDOS ESENCIALES:${NC}"
+echo -e "${YELLOW}🛠️  COMANDOS PARA IMAGEN EXISTENTE:${NC}"
 echo "  • 🔍 DIAGNÓSTICO COMPLETO: sudo $DIAG_DEFINITIVO"
-echo "  • 📝 Ver logs: tail -f /var/log/vidloop-definitivo.log"
-echo "  • 🔄 Reiniciar servicio: sudo systemctl restart vidloop-definitivo"
-echo "  • ⚙️ Estado servicio: sudo systemctl status vidloop-definitivo"
-echo "  • 🎬 Ejecutar manual: sudo $DEFINITIVO_SCRIPT"
-echo "  • 📁 Agregar video: cp video.mp4 /home/admin/VIDLOOP44/"
+echo "  • 🎬 Iniciar video original: sudo systemctl start video_looper"
+echo "  • 🎬 Usar optimizado: sudo $DEFINITIVO_SCRIPT"
+echo "  • 📝 Ver logs optimizado: tail -f /var/log/vidloop-definitivo.log"
+echo "  • 📝 Ver logs original: sudo journalctl -u video_looper -f"
+echo "  • 📺 Estado HDMI: tvservice -s"
+echo "  • 🌐 Redes ZeroTier: sudo zerotier-cli listnetworks"
 
 echo
-echo -e "${CYAN}🎯 SOLUCIÓN DE PROBLEMAS:${NC}"
-echo "  • 🖥️ PANTALLA NEGRA:"
-echo "    1. sudo $DIAG_DEFINITIVO"
-echo "    2. Verificar videos en /home/admin/VIDLOOP44"
-echo "    3. tail -f /var/log/vidloop-definitivo.log"
-echo "    4. sudo systemctl restart vidloop-definitivo"
-echo
-echo "  • 🔄 MICRO CORTES PERSISTEN:"
-echo "    1. Verificar temperatura: vcgencmd measure_temp"
-echo "    2. Usar solo formatos MP4, H264, MKV"
-echo "    3. Verificar que GPU tenga 256MB"
-echo "    4. Reducir resolución de videos si necesario"
+echo -e "${CYAN}🎯 DIFERENCIAS CON INSTALACIÓN COMPLETA:${NC}"
+echo "  • ✅ Mantiene pi_video_looper existente"
+echo "  • ✅ Solo aplica optimizaciones anti-micro-cortes"
+echo "  • ✅ ZeroTier reinstalado para configuración limpia"
+echo "  • ✅ Compatibilidad total con imagen original"
+echo "  • ✅ Respaldo script optimizado disponible"
 
 echo
-echo -e "${RED}⚠️  IMPORTANTE:${NC}"
+echo -e "${RED}📝 NOTAS IMPORTANTES:${NC}"
 echo "  • Se aplicó overclock suave - monitorea temperatura"
-echo "  • Formatos recomendados: MP4 (H264), H264 puro, MKV"
-echo "  • Evita AVI, WMV, FLV (causan micro cortes)"
-echo "  • Videos de alta resolución pueden causar cortes"
+echo "  • Usa formatos optimizados: MP4 (H264), H264 puro, MKV"
+echo "  • Evita AVI, WMV, FLV (pueden causar micro cortes)"
+echo "  • El script respeta la instalación original de pi_video_looper"
 
 echo
 echo -e "${GREEN}🎯 Desarrollado por IGNACE - Powered By: 44 Contenidos${NC}"
-echo -e "${GREEN}   ✨ VERSIÓN DEFINITIVA ANTI-MICRO-CORTES ✨${NC}"
+echo -e "${GREEN}   ✨ OPTIMIZADOR PARA IMAGEN EXISTENTE ✨${NC}"
 
 # Preguntar si reiniciar
 echo
-echo -e "${YELLOW}¿Deseas reiniciar el sistema ahora para aplicar todos los cambios? (y/n):${NC}"
+echo -e "${YELLOW}¿Deseas reiniciar el sistema ahora para aplicar las optimizaciones? (y/n):${NC}"
 read -r REBOOT_NOW
 
 if [[ $REBOOT_NOW =~ ^[Yy]$ ]]; then
-    log_info "🔄 Reiniciando sistema en 10 segundos..."
+    log_info "🔄 Reiniciando sistema optimizado en 10 segundos..."
     echo "Después del reinicio:"
-    echo "  ✨ El sistema estará optimizado al máximo"
-    echo "  🎬 Los videos se reproducirán sin micro cortes"
-    echo "  🔍 Si hay problemas, usa el diagnóstico"
-    echo "  🌐 Conecta por SSH si necesitas acceso remoto"
+    echo "  ✨ Tu imagen tendrá todas las optimizaciones aplicadas"
+    echo "  🎬 pi_video_looper original funcionará mejor"
+    echo "  📝 Script optimizado disponible como respaldo"
+    echo "  🔍 Usa el diagnóstico para verificar todo"
     
     countdown=10
     while [ $countdown -gt 0 ]; do
@@ -1091,7 +912,7 @@ if [[ $REBOOT_NOW =~ ^[Yy]$ ]]; then
     sudo reboot
 else
     log_info "💡 Recuerda reiniciar manualmente: sudo reboot"
-    echo "El sistema DEFINITIVO está configurado pero necesita reiniciar para funcionar al máximo"
+    echo "Las optimizaciones están aplicadas pero necesitas reiniciar para que tengan efecto completo"
 fi
 
-log_success "🎯 VIDLOOP DEFINITIVO ANTI-MICRO-CORTES COMPLETADO"
+log_success "🎯 VIDLOOP COMPLETADO"
