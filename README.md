@@ -1,4 +1,4 @@
-# VIDLOOP DEFINITIVO - Sistema de Videoloops para Raspberry Pi
+# VIDLOOP 2.0 - Sistema Avanzado de Videoloops para Raspberry Pi
 
 Solución profesional **TODO-EN-UNO** para reproducción automática y continua de videos en pantallas, con **tecnología anti-micro-cortes** y configuración ultra-optimizada. Ideal para puntos de venta, exhibiciones, ferias, señalización digital y aplicaciones de broadcast profesional.
 
@@ -6,17 +6,18 @@ Desarrollado por **Ignacio Manuel Centeno** (Desarrollador de Software), con el 
 
 ---
 
-## 🎯 ¿Qué es VIDLOOP DEFINITIVO?
+## 🎯 ¿Qué es VIDLOOP 2.0?
 
-**VIDLOOP DEFINITIVO** es la evolución completa del sistema de videoloops, que integra en un **único script instalador** todas las funcionalidades, optimizaciones y correcciones desarrolladas:
+**VIDLOOP 2.0** es la evolución completa del sistema de videoloops, que integra en un **único script instalador** todas las funcionalidades, optimizaciones y correcciones desarrolladas:
 
 - ✅ **Instalación completa automática** (Sistema + Software + Configuración)
 - ✅ **Tecnología anti-micro-cortes** (Buffers 20x, GPU optimizada, CPU overclocking)
-- ✅ **Force Display HDMI ultra-agresivo** (Solución definitiva a pantallas negras)
+- ✅ **Force Display HDMI ultra-agresivo** (Solución a pantallas negras)
 - ✅ **Configuración pi_video_looper optimizada** (video_looper.ini integrado)
 - ✅ **Acceso remoto VPN** (ZeroTier automático)
-- ✅ **Inicio automático con múltiples respaldos** (systemd + rc.local + keepalive)
+- ✅ **Inicio automático con múltiples respaldos** (systemd + keepalive)
 - ✅ **Diagnósticos integrados** (Script de troubleshooting incluido)
+- ✅ **Modo optimización de imagen existente** (Para backups con pi_video_looper instalado)
 
 ---
 
@@ -42,14 +43,14 @@ Desarrollado por **Ignacio Manuel Centeno** (Desarrollador de Software), con el 
 - **Múltiples ubicaciones**: Configuración distribuida automáticamente
 
 ### 🔄 **Inicio Automático Robusto**
-- **Servicio systemd**: `vidloop-definitivo.service` con prioridad máxima
-- **Respaldo rc.local**: Por si systemd falla
+- **Servicio systemd**: Con prioridad máxima
 - **HDMI keepalive**: Servicio independiente para mantener display
-- **Reinicio automático**: Si el video falla, se reinicia en 3 segundos
+- **Reinicio automático**: Si el video falla, se reinicia automáticamente
+- **Detección inteligente**: Funciona con instalaciones existentes
 
 ### 🌐 **Acceso Remoto Profesional**
 - **ZeroTier VPN**: Acceso seguro desde cualquier lugar
-- **SSH optimizado**: Puerto 44 con configuración de seguridad
+- **SSH optimizado**: Con configuración de seguridad
 - **Logs centralizados**: Diagnóstico remoto completo
 - **Script de diagnóstico**: Troubleshooting automático incluido
 
@@ -67,23 +68,25 @@ Desarrollado por **Ignacio Manuel Centeno** (Desarrollador de Software), con el 
 
 ## 🔧 Instalación paso a paso
 
-### 1. **Preparar la Raspberry Pi**
+### **Modo 1: Instalación completa (Sistema nuevo)**
+
+#### 1. **Preparar la Raspberry Pi**
 ```bash
 # Actualizar sistema base (opcional, el script lo hace automáticamente)
 sudo apt update && sudo apt upgrade -y
 ```
 
-### 2. **Descargar VIDLOOP DEFINITIVO**
+#### 2. **Descargar VIDLOOP 2.0**
 ```bash
 # Opción A: Clonar repositorio completo
 git clone https://github.com/ignacentenox/VIDLOOP.git
-cd VIDLOOP
+cd VIDLOOP/RASPBERRY-PAGE
 
 # Opción B: Descargar solo el script
 curl -O https://raw.githubusercontent.com/ignacentenox/VIDLOOP/main/RASPBERRY-PAGE/vidloop-definitivo.sh
 ```
 
-### 3. **Ejecutar instalación definitiva**
+#### 3. **Ejecutar instalación completa**
 ```bash
 # Dar permisos de ejecución
 chmod +x vidloop-definitivo.sh
@@ -92,28 +95,54 @@ chmod +x vidloop-definitivo.sh
 sudo ./vidloop-definitivo.sh
 ```
 
-### 4. **Proceso automático**
+### **Modo 2: Optimización de imagen existente**
+
+Si ya tienes una imagen con `pi_video_looper` instalado:
+
+#### 1. **Copiar script a la Raspberry Pi**
+```bash
+# Via SCP desde tu computadora
+scp vidloop-definitivo.sh admin@IP_DE_TU_RPI:/home/admin/
+
+# O descargar directamente en la RPi
+curl -O https://raw.githubusercontent.com/ignacentenox/VIDLOOP/main/RASPBERRY-PAGE/vidloop-definitivo.sh
+```
+
+#### 2. **Ejecutar optimización**
+```bash
+chmod +x vidloop-definitivo.sh
+sudo ./vidloop-definitivo.sh
+```
+
+El script **detecta automáticamente** si hay una instalación existente y aplica solo las optimizaciones necesarias.
+
+---
+
+## 🎬 Proceso de instalación automático
+
 El script realiza **automáticamente**:
 
+### **Para instalación completa:**
 - ✅ **Detección de usuario y sistema**
 - ✅ **Actualización completa del sistema**
 - ✅ **Instalación de todas las dependencias**
+- ✅ **Clonado e instalación de pi_video_looper**
 - ✅ **Configuración de GPU y CPU** (256MB GPU, 1800MHz CPU)
-- ✅ **Optimización de config.txt y cmdline.txt**
-- ✅ **Instalación de pi_video_looper** (desde GitHub)
+- ✅ **Optimización de config.txt**
 - ✅ **Configuración anti-micro-cortes** (video_looper.ini optimizado)
 - ✅ **Setup HDMI force ultra-agresivo**
 - ✅ **Instalación y configuración de ZeroTier VPN**
 - ✅ **Creación de servicios systemd** (inicio automático)
 - ✅ **Scripts de diagnóstico y utilidades**
-- ✅ **Configuración de SSH seguro** (puerto 22)
+- ✅ **Configuración de SSH seguro**
 
-### 5. **Reinicio automático**
-```bash
-# El script reinicia automáticamente al finalizar
-# Si no reinicia automáticamente:
-sudo reboot
-```
+### **Para optimización de imagen existente:**
+- ✅ **Respeta instalación existente** de pi_video_looper
+- ✅ **Aplica optimizaciones anti-micro-cortes**
+- ✅ **Reinstala ZeroTier limpiamente**
+- ✅ **Configura HDMI ultra-agresivo**
+- ✅ **Optimiza sistema operativo**
+- ✅ **Mantiene compatibilidad** con configuración original
 
 ---
 
@@ -134,78 +163,104 @@ sudo reboot
 3. **Los videos se reproducen automáticamente** al arrancar la RPi
 
 ### **Comandos útiles**
+
+#### **Para instalación completa:**
 ```bash
 # Ver estado del servicio
-sudo systemctl status vidloop-definitivo.service
+sudo systemctl status video_looper
 
 # Reiniciar reproducción
-sudo systemctl restart vidloop-definitivo.service
+sudo systemctl restart video_looper
 
 # Ver logs en tiempo real
-sudo journalctl -u vidloop-definitivo.service -f
+sudo journalctl -u video_looper -f
 
 # Ejecutar diagnóstico completo
 sudo /usr/local/bin/vidloop-definitivo-diagnostic.sh
+```
 
-# Verificar configuración
-cat /opt/video_looper/video_looper.ini
+#### **Para imagen existente optimizada:**
+```bash
+# Usar instalación original
+sudo systemctl restart video_looper
+
+# Usar script optimizado (respaldo)
+sudo /usr/local/bin/vidloop-definitivo.sh
+
+# Ver logs optimizados
+tail -f /var/log/vidloop-definitivo.log
+
+# Diagnóstico completo
+sudo /usr/local/bin/vidloop-definitivo-diagnostic.sh
 ```
 
 ---
 
 ## 🌐 Configuración VPN (ZeroTier)
 
-### **Configurar acceso remoto:**
-1. **El script instala ZeroTier automáticamente**
+### **Durante la instalación:**
+El script pregunta si deseas configurar ZeroTier y solicita el Network ID.
 
-2. **Unir a tu red ZeroTier:**
-   ```bash
-   sudo zerotier-cli join TU_NETWORK_ID
-   ```
+### **Configuración manual posterior:**
+```bash
+# Unir a tu red ZeroTier
+sudo zerotier-cli join TU_NETWORK_ID
 
-3. **Autorizar en el panel web:**
-   - Ir a [ZeroTier Central](https://my.zerotier.com/)
-   - Autorizar la nueva Raspberry Pi
-   - Anotar la IP asignada
+# Ver redes conectadas
+sudo zerotier-cli listnetworks
 
-4. **Acceso SSH remoto:**
-   ```bash
-   ssh admin@IP_ZEROTIER -p 44
-   ```
+# Ver información del nodo
+sudo zerotier-cli info
+```
+
+### **Autorizar en panel web:**
+1. Ir a [ZeroTier Central](https://my.zerotier.com/)
+2. Autorizar la nueva Raspberry Pi  
+3. Anotar la IP asignada
+
+### **Acceso SSH remoto:**
+```bash
+ssh admin@IP_ZEROTIER
+# Contraseña: 4455
+```
 
 ---
 
 ## 🔧 Configuración avanzada
 
 ### **Personalizar video_looper.ini**
-El archivo se encuentra en: `/opt/video_looper/video_looper.ini`
+
+#### **Para instalación completa:**
+Archivo en: `/opt/video_looper/video_looper.ini`
+
+#### **Para imagen existente:**
+El script busca y optimiza **todos** los archivos `video_looper.ini` encontrados.
 
 **Parámetros clave anti-micro-cortes:**
 ```ini
 # Buffers aumentados 20x
-omxplayer_extra_args = --audio_queue 20 --video_queue 20
+omxplayer_extra_args = --audio_queue 20 --video_queue 20 --fps 30
 
 # Transición ultra-suave
 wait_time = 0.05
 
-# GPU optimizada
-gpu_mem = 256
+# Directorio optimizado
+directory_path = /home/admin/VIDLOOP44
 
-# Resolución fija
-width = 1920
-height = 1080
+# Hardware acceleration
+hw_accel = true
 ```
 
 ### **Modificar directorio de videos**
 ```bash
-# Editar configuración
+# Editar configuración principal
 sudo nano /opt/video_looper/video_looper.ini
 
 # Cambiar ruta:
 directory_path = /tu/nueva/ruta
 
 # Reiniciar servicio
-sudo systemctl restart vidloop-definitivo.service
+sudo systemctl restart video_looper
 ```
 
 ---
@@ -214,7 +269,7 @@ sudo systemctl restart vidloop-definitivo.service
 
 ### **Script de diagnóstico automático**
 ```bash
-# Ejecutar diagnóstico completo
+# Ejecutar diagnóstico completo (detecta modo automáticamente)
 sudo /usr/local/bin/vidloop-definitivo-diagnostic.sh
 ```
 
@@ -225,6 +280,9 @@ sudo /usr/local/bin/vidloop-definitivo-diagnostic.sh
 # Forzar HDMI manualmente
 sudo tvservice -p
 sudo tvservice --explicit="CEA 16 HDMI"
+
+# Verificar servicio HDMI keepalive
+sudo systemctl status hdmi-keepalive
 ```
 
 **❌ Videos con micro-cortes:**
@@ -237,11 +295,12 @@ grep -E "(audio_queue|video_queue)" /opt/video_looper/video_looper.ini
 
 **❌ Servicio no inicia:**
 ```bash
-# Ver logs de error
-sudo journalctl -u vidloop-definitivo.service -n 50
+# Para instalación completa
+sudo journalctl -u video_looper -n 50
 
-# Reiniciar servicio
-sudo systemctl restart vidloop-definitivo.service
+# Para imagen existente
+sudo systemctl restart video_looper
+tail -f /var/log/vidloop-definitivo.log
 ```
 
 **❌ No encuentra videos:**
@@ -249,6 +308,15 @@ sudo systemctl restart vidloop-definitivo.service
 # Verificar directorio y permisos
 ls -la /home/admin/VIDLOOP44/
 sudo chown -R admin:admin /home/admin/VIDLOOP44/
+```
+
+**❌ Problemas con imagen existente:**
+```bash
+# Re-ejecutar optimización
+sudo ./vidloop-definitivo.sh
+
+# Verificar instalación existente detectada
+sudo /usr/local/bin/vidloop-definitivo-diagnostic.sh
 ```
 
 ---
@@ -266,27 +334,35 @@ sudo chown -R admin:admin /home/admin/VIDLOOP44/
 - **Video Player**: omxplayer (hardware-accelerated)
 - **Audio Buffers**: 20x más grandes (anti-micro-cortes)
 - **Video Buffers**: 20x más grandes (reproducción fluida)
-- **Frame Rate**: 25fps fijo (estabilidad)
+- **Frame Rate**: 30fps fijo (estabilidad)
 - **Priority**: Nice -20 (máxima prioridad CPU)
 
 ### **Servicios del sistema**
-- `vidloop-definitivo.service` - Reproductor principal
+
+#### **Instalación completa:**
+- `video_looper.service` - Reproductor principal
 - `hdmi-keepalive.service` - Mantiene señal HDMI
 - `zerotier-one.service` - VPN para acceso remoto
 
+#### **Imagen existente optimizada:**
+- Mantiene servicios originales
+- Añade `hdmi-keepalive.service`
+- Script optimizado como respaldo
+
 ---
 
-## 📈 Ventajas vs versión anterior
+## 📈 Ventajas VIDLOOP 2.0
 
-| Característica | Versión Anterior | VIDLOOP DEFINITIVO |
-|----------------|------------------|-------------------|
-| **Instalación** | Manual paso a paso | ✅ Automática completa |
-| **Anti-micro-cortes** | No incluido | ✅ Buffers 20x optimizados |
-| **Display Force** | Básico | ✅ Ultra-agresivo + keepalive |
-| **Configuración** | Manual | ✅ video_looper.ini integrado |
-| **Inicio automático** | Solo systemd | ✅ Triple respaldo |
-| **Diagnósticos** | Manual | ✅ Script automático incluido |
-| **Actualización** | Reinstalación completa | ✅ Script único actualizable |
+| Característica | VIDLOOP v1.0 | VIDLOOP 2.0 |
+|----------------|--------------|-------------|
+| **Instalación** | Solo nueva | ✅ Nueva + Optimización de existente |
+| **Detección automática** | Manual | ✅ Detecta instalaciones existentes |
+| **Anti-micro-cortes** | Básico | ✅ Buffers 20x + parámetros avanzados |
+| **Display Force** | Estándar | ✅ Ultra-agresivo + keepalive |
+| **ZeroTier** | Configuración manual | ✅ Reinstalación limpia automática |
+| **Compatibilidad** | Solo nueva instalación | ✅ Respeta configuraciones existentes |
+| **Diagnósticos** | Básico | ✅ Detecta modo y adapta diagnóstico |
+| **Flexibilidad** | Un solo modo | ✅ Dos modos: completo + optimización |
 
 ---
 
@@ -312,15 +388,22 @@ sudo chown -R admin:admin /home/admin/VIDLOOP44/
 - KPIs y métricas en tiempo real
 - Información para visitantes
 
+### **🔧 Optimización de instalaciones existentes**
+- Mejora de sistemas ya implementados
+- Actualización sin reinstalación completa
+- Mantenimiento de configuraciones personalizadas
+
 ---
 
 ## 🔄 Actualizaciones y mantenimiento
 
-### **Actualizar el sistema**
+### **Actualizar VIDLOOP 2.0**
 ```bash
-# Actualizar VIDLOOP DEFINITIVO
-curl -O https://raw.githubusercontent.com/ignacentenox/VIDLOOP/vidloop-definitivo.sh
+# Descargar nueva versión
+curl -O https://raw.githubusercontent.com/ignacentenox/VIDLOOP/main/RASPBERRY-PAGE/vidloop-definitivo.sh
 chmod +x vidloop-definitivo.sh
+
+# Ejecutar (detecta automáticamente el modo)
 sudo ./vidloop-definitivo.sh
 ```
 
@@ -334,6 +417,25 @@ sudo /usr/local/bin/vidloop-definitivo-diagnostic.sh
 
 # Actualizar sistema base (trimestral)
 sudo apt update && sudo apt upgrade -y
+
+# Verificar temperatura (importante con overclock)
+vcgencmd measure_temp
+```
+
+---
+
+## 📁 Estructura del proyecto
+
+```
+VIDLOOP/
+├── RASPBERRY-PAGE/
+│   ├── vidloop-definitivo.sh      # Script principal VIDLOOP 2.0
+│   ├── video_looper.ini           # Configuración optimizada
+│   └── README.md                  # Este archivo
+├── assets/
+│   └── configuraciones/           # Archivos de configuración adicionales
+└── docs/
+    └── troubleshooting.md         # Guía de resolución de problemas
 ```
 
 ---
@@ -349,33 +451,77 @@ sudo apt update && sudo apt upgrade -y
 ### **Avalado por:**
 **44 Contenidos**  
 🎬 Soluciones audiovisuales y digitales profesionales  
-📺 Especialistas en broadcast
+📺 Especialistas en broadcast digital
 
 ### **Soporte incluido:**
 - ✅ **Instalación remota** vía ZeroTier VPN
 - ✅ **Configuración personalizada** según necesidades
+- ✅ **Optimización de sistemas existentes**
 - ✅ **Troubleshooting** y resolución de problemas
 - ✅ **Actualizaciones** y mejoras continuas
 - ✅ **Documentación técnica** completa
+- ✅ **Soporte para migraciones** desde v1.0
 
 ---
 
-## 🚀 ¿Listo para profesionalizar tu comunicación visual?
+## 🚀 ¿Listo para la nueva generación de videoloops?
 
-**VIDLOOP DEFINITIVO** es la solución más completa y robusta del mercado para Raspberry Pi, diseñada para entornos profesionales que requieren:
+**VIDLOOP 2.0** es la solución más completa y robusta del mercado para Raspberry Pi, diseñada para entornos profesionales que requieren:
 
-- ⚡ **Máxima estabilidad**
-- 🎯 **Cero micro-cortes**
-- 🔧 **Fácil mantenimiento**
+- ⚡ **Máxima estabilidad** en cualquier escenario
+- 🎯 **Cero micro-cortes** garantizado
+- 🔧 **Fácil mantenimiento** y actualización
 - 🌐 **Acceso remoto seguro**
 - 💪 **Soporte técnico profesional**
+- 🔄 **Compatibilidad** con sistemas existentes
+- 📈 **Migración sin pérdida** de configuraciones
+
+### **Novedades en VIDLOOP 2.0:**
+- 🆕 **Modo optimización** para imágenes existentes
+- 🆕 **Detección automática** de instalaciones
+- 🆕 **ZeroTier reinstalación limpia**
+- 🆕 **Diagnósticos adaptativos**
+- 🆕 **Mayor compatibilidad** con diferentes configuraciones
 
 ### **¡Consultanos para implementaciones a medida!**
 
-**¿Necesitas múltiples pantallas? ¿Configuración corporativa? ¿Integración con sistemas existentes?**
+**¿Necesitas migrar sistemas existentes? ¿Múltiples pantallas? ¿Configuración corporativa? ¿Integración con sistemas existentes?**
 
-Contactanos para soluciones enterprise y descuentos por volumen. 
+Contactanos para soluciones enterprise y descuentos por volumen.
 
 ---
 
-*VIDLOOP v1.0 - La evolución definitiva de los sistemas de videoloops para Raspberry Pi* 🎯
+## 📄 Licencia
+
+Este proyecto está bajo la licencia MIT. Ver el archivo `LICENSE` para más detalles.
+
+---
+
+## 🤝 Contribuciones
+
+Las contribuciones son bienvenidas. Por favor:
+
+1. Fork el proyecto
+2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
+3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
+4. Push a la rama (`git push origin feature/AmazingFeature`)
+5. Abre un Pull Request
+
+---
+
+## ⭐ Agradecimientos
+
+- **Adafruit** por pi_video_looper
+- **Raspberry Pi Foundation** por el ecosistema RPi
+- **ZeroTier** por la solución VPN
+- **Comunidad Open Source** por las herramientas utilizadas
+
+---
+
+*VIDLOOP 2.0 - La evolución inteligente de los sistemas de videoloops para Raspberry Pi* 🎯  
+*Compatible con instalaciones existentes • Optimización automática • Soporte profesional*
+
+[![GitHub stars](https://img.shields.io/github/stars/ignacentenox/VIDLOOP.svg)](https://github.com/ignacentenox/VIDLOOP/stargazers)
+[![GitHub forks](https://img.shields.io/github/forks/ignacentenox/VIDLOOP.svg)](https://github.com/ignacentenox/VIDLOOP/network)
+[![GitHub issues](https://img.shields.io/github/issues/ignacentenox/VIDLOOP.svg)](https://github.com/ignacentenox/VIDLOOP/issues)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
