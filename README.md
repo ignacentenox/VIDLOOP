@@ -68,49 +68,21 @@ Desarrollado por **Ignacio Manuel Centeno** (Desarrollador de Software), con el 
 
 ## 🔧 Instalación paso a paso
 
-### **Modo 1: Instalación completa (Sistema nuevo)**
+Ofrecemos una imagen con `VIDLOOP` ya instalado: PROXIMAMENTE 
 
-#### 1. **Preparar la Raspberry Pi**
-```bash
-# Actualizar sistema base (opcional, el script lo hace automáticamente)
-sudo apt update && sudo apt upgrade -y
-```
+#### 1. **Copiar script a la Raspberry Pi**
 
-#### 2. **Descargar VIDLOOP 2.0**
-```bash
-# Opción A: Clonar repositorio completo
+# Clonar repositorio completo
 git clone https://github.com/ignacentenox/VIDLOOP.git
-cd VIDLOOP/RASPBERRY-PAGE
+cd VIDLOOP
 
-# Opción B: Descargar solo el script
-curl -O https://raw.githubusercontent.com/ignacentenox/VIDLOOP/main/RASPBERRY-PAGE/vidloop-definitivo.sh
-```
+#### 2. **Ejecutar optimización**
 
-#### 3. **Ejecutar instalación completa**
 ```bash
 # Dar permisos de ejecución
 chmod +x vidloop-definitivo.sh
 
 # Ejecutar instalación completa (como sudo)
-sudo ./vidloop-definitivo.sh
-```
-
-### **Modo 2: Optimización de imagen existente**
-
-Si ya tienes una imagen con `pi_video_looper` instalado:
-
-#### 1. **Copiar script a la Raspberry Pi**
-```bash
-# Via SCP desde tu computadora
-scp vidloop-definitivo.sh admin@IP_DE_TU_RPI:/home/admin/
-
-# O descargar directamente en la RPi
-curl -O https://raw.githubusercontent.com/ignacentenox/VIDLOOP/main/RASPBERRY-PAGE/vidloop-definitivo.sh
-```
-
-#### 2. **Ejecutar optimización**
-```bash
-chmod +x vidloop-definitivo.sh
 sudo ./vidloop-definitivo.sh
 ```
 
@@ -151,7 +123,7 @@ El script realiza **automáticamente**:
 ### **Agregar videos**
 1. **Crear/verificar directorio de videos:**
    ```bash
-   mkdir -p /home/admin/VIDLOOP44
+   /home/admin/videos
    ```
 
 2. **Subir videos** (formatos recomendados):
@@ -219,12 +191,6 @@ sudo zerotier-cli info
 3. Anotar la IP asignada
 
 ### **Acceso SSH remoto:**
-```bash
-ssh admin@IP_ZEROTIER
-# Contraseña: 4455
-```
-
----
 
 ## 🔧 Configuración avanzada
 
@@ -428,7 +394,6 @@ vcgencmd measure_temp
 
 ```
 VIDLOOP/
-├── RASPBERRY-PAGE/
 │   ├── vidloop-definitivo.sh      # Script principal VIDLOOP 2.0
 │   ├── video_looper.ini           # Configuración optimizada
 │   └── README.md                  # Este archivo
@@ -487,7 +452,7 @@ VIDLOOP/
 
 **¿Necesitas migrar sistemas existentes? ¿Múltiples pantallas? ¿Configuración corporativa? ¿Integración con sistemas existentes?**
 
-Contactanos para soluciones enterprise y descuentos por volumen.
+Contactanos para soluciones y descuentos por volumen.
 
 ---
 
