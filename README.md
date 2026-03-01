@@ -394,14 +394,95 @@ vcgencmd measure_temp
 
 ```
 VIDLOOP/
-│   ├── vidloop-definitivo.sh      # Script principal VIDLOOP 2.0
-│   ├── video_looper.ini           # Configuración optimizada
-│   └── README.md                  # Este archivo
-├── assets/
-│   └── configuraciones/           # Archivos de configuración adicionales
-└── docs/
-    └── troubleshooting.md         # Guía de resolución de problemas
+├── agent/
+│   └── agent.py                   # Agente de sincronización pull (Raspberry Pi)
+├── backend/
+│   ├── app.py                     # Servidor Flask — API central
+│   ├── Dockerfile                 # Imagen Docker del backend
+│   ├── requirements.txt           # Dependencias Python del backend
+│   └── services/
+│       └── ffmpeg_service.py      # Conversión imagen → video (FFmpeg)
+├── docker-compose.yml             # Orquestación del servidor central
+├── vidloop-V2.0.sh                # Script instalador VIDLOOP 2.0
+├── video_looper.ini               # Configuración optimizada
+└── README.md                      # Este archivo
 ```
+
+---
+
+## 🔄 Arquitectura Pull — Sincronización Automática
+
+La versión 2.0 incluye una arquitectura de comunicación **pull** que permite a las Raspberry Pis auto-sincronizarse con el servidor central sin necesidad de puertos abiertos en los routers locales.
+
+```
+┌─────────────────────────────────────────────────────┐
+│              Servidor Central (Docker)              │
+│  ┌────────────────────────────────────────────────┐ │
+│  │  POST /api/device/sync  ← registro + lista    │ │
+│  │  GET  /api/device/files/<file>  ← descarga    │ │
+│  │  POST /api/upload        ← subida de medios   │ │
+│  └────────────────────────────────────────────────┘ │
+└─────────────────┬───────────────────────────────────┘
+                  │  ZeroTier VPN (red privada)
+          ┌───────┴────────┐
+          │                │
+    ┌─────▼──────┐   ┌─────▼──────┐
+    │  RPi #1    │   │  RPi #2    │
+    │  agent.py  │   │  agent.py  │
+    └────────────┘   └────────────┘
+```
+
+### Iniciar el servidor central
+
+```bash
+# Clonar el repositorio y arrancar el backend con Docker Compose
+git clone https://github.com/ignacentenox/VIDLOOP.git
+cd VIDLOOP
+docker compose up -d
+```
+
+El servidor queda disponible en `http://<SERVER_IP>:5000`.
+
+### Subir contenido al servidor
+
+```bash
+# Subir un video
+curl -F "file=@promo.mp4" http://<SERVER_IP>:5000/api/upload
+
+# Subir una imagen (se convierte automáticamente en video de 20 segundos)
+curl -F "file=@cartel.jpg" http://<SERVER_IP>:5000/api/upload
+```
+
+### Instalar y ejecutar el agente en la Raspberry Pi
+
+```bash
+# Instalar dependencia
+pip3 install requests
+
+# Copiar agent.py a la Raspberry Pi y ejecutarlo
+VIDLOOP_SERVER_URL=http://<SERVER_IP>:5000 \
+VIDLOOP_DEVICE_ID=mi-pantalla-01 \
+VIDLOOP_VIDEOS_DIR=/home/pi/VIDLOOP44 \
+ZEROTIER_NETWORK_ID=<TU_NETWORK_ID> \
+python3 agent/agent.py
+```
+
+| Variable de entorno | Descripción | Default |
+|---------------------|-------------|---------|
+| `VIDLOOP_SERVER_URL` | URL base del servidor central | `http://192.168.196.1:5000` |
+| `VIDLOOP_DEVICE_ID` | ID único de la Raspberry Pi | hostname del sistema |
+| `VIDLOOP_VIDEOS_DIR` | Directorio local de videos | `/home/pi/VIDLOOP44` |
+| `VIDLOOP_SYNC_INTERVAL` | Segundos entre ciclos de sync | `60` |
+| `ZEROTIER_NETWORK_ID` | ID de la red ZeroTier (opcional) | — |
+
+### Flujo de sincronización
+
+1. El agente verifica conectividad ZeroTier (si `ZEROTIER_NETWORK_ID` está configurado).
+2. Envía `POST /api/device/sync` con el `device_id` y la lista de archivos locales.
+3. El servidor registra automáticamente el dispositivo si es nuevo.
+4. El servidor responde con la lista de archivos que el dispositivo aún no tiene.
+5. El agente descarga cada archivo nuevo vía `GET /api/device/files/<filename>`.
+6. Espera `SYNC_INTERVAL` segundos y repite el ciclo.
 
 ---
 

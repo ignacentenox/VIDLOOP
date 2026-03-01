@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: vidloop-backend
+    container_name: vidloop-backend
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - media_data:/app/media
+      - db_data:/app/db
+    environment:
+      MEDIA_DIR: /app/media
+      DATABASE: /app/db/vidloop.db
+      # Override SECRET_KEY with a strong random value in production:
+      # SECRET_KEY: "your-secret-key-here"
+
+volumes:
+  media_data:
+    driver: local
+  db_data:
+    driver: local
