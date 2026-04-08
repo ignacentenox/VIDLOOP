@@ -253,6 +253,37 @@ sudo apt-get install -y \
     || { log_error "Fallo la instalacion de dependencias"; exit 1; }
 log_ok "Dependencias base instaladas"
 
+# ================================================================
+# Configurar idioma Español Argentina y zona horaria
+# ================================================================
+log_info "Configurando idioma Español Argentina (es_AR.UTF-8)..."
+if [ -f /etc/locale.gen ]; then
+    # Habilitar locale es_AR.UTF-8 si no está activo
+    if ! locale -a 2>/dev/null | grep -qi 'es_AR.utf8\|es_AR.UTF-8'; then
+        sudo sed -i 's/^# *es_AR.UTF-8 UTF-8/es_AR.UTF-8 UTF-8/' /etc/locale.gen
+        # Si no estaba ni comentado, agregarlo
+        if ! grep -q '^es_AR.UTF-8 UTF-8' /etc/locale.gen; then
+            echo 'es_AR.UTF-8 UTF-8' | sudo tee -a /etc/locale.gen >/dev/null
+        fi
+        sudo locale-gen
+    fi
+    # Setear como locale por defecto del sistema
+    sudo update-locale LANG=es_AR.UTF-8 LC_ALL=es_AR.UTF-8 LANGUAGE=es_AR:es
+    log_ok "Locale es_AR.UTF-8 configurado"
+else
+    log_warn "No se encontró /etc/locale.gen, se omite configuración de locale"
+fi
+
+# Zona horaria Argentina
+if [ -f /usr/share/zoneinfo/America/Argentina/Buenos_Aires ]; then
+    sudo ln -sf /usr/share/zoneinfo/America/Argentina/Buenos_Aires /etc/localtime
+    echo 'America/Argentina/Buenos_Aires' | sudo tee /etc/timezone >/dev/null
+    sudo dpkg-reconfigure -f noninteractive tzdata 2>/dev/null || true
+    log_ok "Zona horaria: America/Argentina/Buenos_Aires"
+else
+    log_warn "Zoneinfo no disponible, se omite configuración de timezone"
+fi
+
 # Validar que supervisorctl esté disponible ANTES de proceder
 ensure_cmd_or_install "supervisorctl" "supervisor" || {
     log_error "supervisor es requerido para pi_video_looper"
@@ -546,6 +577,50 @@ for src in "\$MEDIA_DIR"/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}; do
         -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
         -c:v libx264 -pix_fmt yuv420p -r 25 "\$out" >/dev/null 2>&1 && CHANGED=1 || true
 done
+
+# ============================================================
+# Concatenar TODOS los mp4 en un unico archivo para 0ms de gap
+# omxplayer loopeando 1 solo archivo = transicion 100% seamless
+# ============================================================
+CONCAT_OUT="\$MEDIA_DIR/__seamless_playlist__.mp4"
+CONCAT_LIST="\$MEDIA_DIR/.concat_list.txt"
+MP4_COUNT=0
+> "\$CONCAT_LIST"
+for mp4 in "\$MEDIA_DIR"/*.mp4; do
+    [ -f "\$mp4" ] || continue
+    bname="\$(basename "\$mp4")"
+    # No incluir el propio concat en la lista
+    [ "\$bname" = "__seamless_playlist__.mp4" ] && continue
+    echo "file '\$mp4'" >> "\$CONCAT_LIST"
+    MP4_COUNT=\$((MP4_COUNT + 1))
+done
+
+if [ "\$MP4_COUNT" -gt 1 ]; then
+    # Solo regenerar si cambio algo o no existe el concat
+    NEW_HASH="\$(cat "\$CONCAT_LIST" | md5sum | cut -d' ' -f1)"
+    OLD_HASH=""
+    [ -f "\$MEDIA_DIR/.concat_hash" ] && OLD_HASH="\$(cat "\$MEDIA_DIR/.concat_hash")"
+    if [ "\$CHANGED" -eq 1 ] || [ ! -f "\$CONCAT_OUT" ] || [ "\$NEW_HASH" != "\$OLD_HASH" ]; then
+        ffmpeg -y -f concat -safe 0 -i "\$CONCAT_LIST" \
+            -c copy "\$CONCAT_OUT" >/dev/null 2>&1 && {
+            echo "\$NEW_HASH" > "\$MEDIA_DIR/.concat_hash"
+            # Mover originales a subcarpeta para que el looper solo vea el concat
+            mkdir -p "\$MEDIA_DIR/.originals"
+            for mp4 in "\$MEDIA_DIR"/*.mp4; do
+                [ -f "\$mp4" ] || continue
+                bname="\$(basename "\$mp4")"
+                [ "\$bname" = "__seamless_playlist__.mp4" ] && continue
+                mv "\$mp4" "\$MEDIA_DIR/.originals/" 2>/dev/null || true
+            done
+            CHANGED=1
+        } || true
+    fi
+elif [ "\$MP4_COUNT" -eq 1 ]; then
+    # Solo hay 1 mp4, omxplayer ya lo loopea seamless
+    # Limpiar concat viejo si existe
+    [ -f "\$CONCAT_OUT" ] && rm -f "\$CONCAT_OUT"
+fi
+rm -f "\$CONCAT_LIST"
 
 if [ "\$CHANGED" -eq 1 ]; then
     # video_looper está en supervisor, no systemd - usar supervisorctl
