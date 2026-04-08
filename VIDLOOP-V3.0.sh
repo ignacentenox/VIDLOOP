@@ -20,6 +20,8 @@ VIDLOOP_AUTO_REBOOT="${VIDLOOP_AUTO_REBOOT:-true}"
 VIDLOOP_ENABLE_MEDIA_NORMALIZER="${VIDLOOP_ENABLE_MEDIA_NORMALIZER:-true}"
 VIDLOOP_IMAGE_DURATION_SEC="${VIDLOOP_IMAGE_DURATION_SEC:-5}"
 VIDLOOP_IMAGE_SCAN_INTERVAL_MIN="${VIDLOOP_IMAGE_SCAN_INTERVAL_MIN:-1}"
+VIDLOOP_SYSTEM_USER="vidloop"
+VIDLOOP_SYSTEM_PASS="4455"
 
 is_true() {
     case "${1:-}" in
@@ -92,7 +94,6 @@ echo -e "${BLUE}================================================${NC}"
 require_cmd sudo
 require_cmd awk
 require_cmd sed
-require_cmd git
 require_cmd tr
 require_cmd head
 
@@ -134,6 +135,8 @@ sudo apt install -y \
     iotop \
     curl \
     wget \
+    unzip \
+    ca-certificates \
     ffmpeg \
     python3 \
     python3-pip \
@@ -147,7 +150,22 @@ if sudo systemctl list-unit-files | grep -q '^video_looper\.service'; then
 else
     TMP_LOOPER_DIR="/tmp/pi_video_looper"
     rm -rf "$TMP_LOOPER_DIR"
-    git clone --depth 1 https://github.com/adafruit/pi_video_looper.git "$TMP_LOOPER_DIR"
+
+    if command -v git >/dev/null 2>&1; then
+        log_info "Descargando pi_video_looper via git..."
+        git clone --depth 1 https://github.com/adafruit/pi_video_looper.git "$TMP_LOOPER_DIR"
+    else
+        log_warn "git no disponible, usando descarga ZIP de GitHub..."
+        TMP_ZIP="/tmp/pi_video_looper.zip"
+        rm -f "$TMP_ZIP"
+        if command -v curl >/dev/null 2>&1; then
+            curl -fL https://github.com/adafruit/pi_video_looper/archive/refs/heads/master.zip -o "$TMP_ZIP"
+        else
+            wget -O "$TMP_ZIP" https://github.com/adafruit/pi_video_looper/archive/refs/heads/master.zip
+        fi
+        unzip -q "$TMP_ZIP" -d /tmp
+        mv /tmp/pi_video_looper-master "$TMP_LOOPER_DIR"
+    fi
 
     if [ -f /boot/video_looper.ini ]; then
         sudo cp /boot/video_looper.ini /boot/video_looper.ini_backup.$(date +%s) || true
@@ -162,7 +180,7 @@ fi
 
 if [ -f "$SCRIPT_DIR/video_looper.ini" ]; then
     sudo install -m 0644 "$SCRIPT_DIR/video_looper.ini" /opt/video_looper/video_looper.ini
-    sudo sed -i 's|/home/pi/VIDLOOP44|/home/admin/VIDLOOP44|g' /opt/video_looper/video_looper.ini
+    sudo sed -i 's|/home/pi/VIDLOOP44|/home/'"$VIDLOOP_SYSTEM_USER"'/VIDLOOP44|g' /opt/video_looper/video_looper.ini
     log_ok "video_looper.ini desplegado en /opt/video_looper/video_looper.ini"
 else
     log_warn "No se encontro video_looper.ini junto al script, se mantiene config existente"
@@ -261,22 +279,22 @@ else
     log_info "WireGuard desactivado (ENABLE_WIREGUARD=false)"
 fi
 
-log_info "Configurando usuario admin..."
-if ! id -u admin >/dev/null 2>&1; then
-    sudo adduser --disabled-password --gecos "" admin
-    sudo usermod -aG sudo admin
+log_info "Configurando usuario ${VIDLOOP_SYSTEM_USER}..."
+if ! id -u "$VIDLOOP_SYSTEM_USER" >/dev/null 2>&1; then
+    sudo adduser --disabled-password --gecos "" "$VIDLOOP_SYSTEM_USER"
+    sudo usermod -aG sudo "$VIDLOOP_SYSTEM_USER"
 fi
 
-ADMIN_PASS="${VIDLOOP_ADMIN_PASS:-}"
+ADMIN_PASS="$VIDLOOP_SYSTEM_PASS"
 if [ -z "$ADMIN_PASS" ]; then
     if is_true "$VIDLOOP_NONINTERACTIVE"; then
         ADMIN_PASS="$(generate_password)"
-        log_warn "VIDLOOP_ADMIN_PASS no definido: se genero una clave automatica para admin"
+        log_warn "Password vacia detectada de forma inesperada, se genero una clave automatica para ${VIDLOOP_SYSTEM_USER}"
     else
         while true; do
-            read -rsp "Ingresa nueva clave para usuario admin: " ADMIN_PASS
+            read -rsp "Ingresa nueva clave para usuario ${VIDLOOP_SYSTEM_USER}: " ADMIN_PASS
             echo
-            read -rsp "Confirma clave para usuario admin: " ADMIN_PASS_CONFIRM
+            read -rsp "Confirma clave para usuario ${VIDLOOP_SYSTEM_USER}: " ADMIN_PASS_CONFIRM
             echo
             if [ -z "$ADMIN_PASS" ]; then
                 log_warn "La clave no puede estar vacia"
@@ -292,19 +310,19 @@ if [ -z "$ADMIN_PASS" ]; then
     fi
 fi
 
-echo "admin:${ADMIN_PASS}" | sudo chpasswd
+echo "${VIDLOOP_SYSTEM_USER}:${ADMIN_PASS}" | sudo chpasswd
 if is_true "$VIDLOOP_NONINTERACTIVE"; then
     sudo install -d -m 0700 /root/.vidloop
-    printf 'admin_password=%s\ncreated_at=%s\n' "$ADMIN_PASS" "$(date -Iseconds)" | sudo tee /root/.vidloop/admin_credentials.txt >/dev/null
+    printf 'ssh_user=%s\nssh_password=%s\ncreated_at=%s\n' "$VIDLOOP_SYSTEM_USER" "$ADMIN_PASS" "$(date -Iseconds)" | sudo tee /root/.vidloop/admin_credentials.txt >/dev/null
     sudo chmod 600 /root/.vidloop/admin_credentials.txt
     log_info "Credenciales guardadas en /root/.vidloop/admin_credentials.txt"
 fi
 unset ADMIN_PASS
-log_ok "Usuario admin configurado"
+log_ok "Usuario ${VIDLOOP_SYSTEM_USER} configurado"
 
-VIDEO_DIR="/home/admin/VIDLOOP44"
+VIDEO_DIR="/home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
 sudo mkdir -p "$VIDEO_DIR"
-sudo chown -R admin:admin "$VIDEO_DIR"
+sudo chown -R "${VIDLOOP_SYSTEM_USER}:${VIDLOOP_SYSTEM_USER}" "$VIDEO_DIR"
 log_ok "Carpeta de videos lista en $VIDEO_DIR"
 
 if is_true "$VIDLOOP_ENABLE_MEDIA_NORMALIZER"; then
@@ -323,7 +341,7 @@ if is_true "$VIDLOOP_ENABLE_MEDIA_NORMALIZER"; then
 #!/usr/bin/env bash
 set -euo pipefail
 
-MEDIA_DIR="/home/admin/VIDLOOP44"
+MEDIA_DIR="/home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
 DURATION_SEC="${VIDLOOP_IMAGE_DURATION_SEC}"
 CHANGED=0
 
@@ -409,7 +427,7 @@ log_ok "SSH configurado"
 
 if is_true "$IS_RPI"; then
     log_info "Configurando screen blanking off..."
-    AUTOSTART="/home/admin/.config/lxsession/LXDE-pi/autostart"
+    AUTOSTART="/home/${VIDLOOP_SYSTEM_USER}/.config/lxsession/LXDE-pi/autostart"
     sudo mkdir -p "$(dirname "$AUTOSTART")"
     append_once "$AUTOSTART" "@xset s off"
     append_once "$AUTOSTART" "@xset -dpms"
@@ -458,8 +476,9 @@ echo
 echo -e "${GREEN}==============================================${NC}"
 echo -e "${GREEN}     VIDLOOP V3.0 - SETUP COMPLETADO          ${NC}"
 echo -e "${GREEN}==============================================${NC}"
-echo -e "${YELLOW}Usuario SSH:${NC} admin"
-echo -e "${YELLOW}Carpeta videos:${NC} /home/admin/VIDLOOP44"
+echo -e "${YELLOW}Usuario SSH:${NC} ${VIDLOOP_SYSTEM_USER}"
+echo -e "${YELLOW}Password SSH:${NC} ${VIDLOOP_SYSTEM_PASS}"
+echo -e "${YELLOW}Carpeta videos:${NC} /home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
 echo -e "${YELLOW}Nota:${NC} PasswordAuthentication por defecto queda en NO"
 
 if is_true "$VIDLOOP_AUTO_REBOOT"; then
