@@ -68,7 +68,19 @@ Desarrollado por **Ignacio Manuel Centeno** (Desarrollador de Software), con el 
 
 ## 🔧 Instalación paso a paso
 
-Ofrecemos una imagen con `VIDLOOP` ya instalado: PROXIMAMENTE 
+Ofrecemos una imagen con `VIDLOOP` ya instalado: PROXIMAMENTE.
+
+## Kit de imagen maestra (nuevo)
+
+Ahora el repo incluye un kit para construir una imagen `.img.xz` de VIDLOOP sobre Raspberry Pi OS con `pi_video_looper`:
+
+- `image-kit/preclone-cleanup.sh`
+- `image-kit/install-firstboot-service.sh`
+- `image-kit/firstboot-init.sh`
+- `image-kit/build-master-image.sh`
+- `image-kit/systemd/vidloop-firstboot.service`
+
+Guia completa en `image-kit/README.md`.
 
 #### 1. **Copiar script a la Raspberry Pi**
 

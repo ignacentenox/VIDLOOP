@@ -1,0 +1,12 @@
+[Unit]
+Description=VIDLOOP first boot initializer
+After=network.target
+ConditionPathExists=!/var/lib/vidloop-firstboot.done
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vidloop-firstboot.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
