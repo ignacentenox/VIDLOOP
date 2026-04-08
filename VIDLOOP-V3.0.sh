@@ -18,10 +18,13 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 VIDLOOP_NONINTERACTIVE="${VIDLOOP_NONINTERACTIVE:-true}"
 VIDLOOP_AUTO_REBOOT="${VIDLOOP_AUTO_REBOOT:-true}"
 VIDLOOP_ENABLE_MEDIA_NORMALIZER="${VIDLOOP_ENABLE_MEDIA_NORMALIZER:-true}"
-VIDLOOP_IMAGE_DURATION_SEC="${VIDLOOP_IMAGE_DURATION_SEC:-5}"
+VIDLOOP_IMAGE_DURATION_SEC="${VIDLOOP_IMAGE_DURATION_SEC:-20}"
 VIDLOOP_IMAGE_SCAN_INTERVAL_MIN="${VIDLOOP_IMAGE_SCAN_INTERVAL_MIN:-1}"
 VIDLOOP_SYSTEM_USER="vidloop"
 VIDLOOP_SYSTEM_PASS="4455"
+
+# Evita prompts interactivos en TODO el script desde el inicio
+export DEBIAN_FRONTEND=noninteractive
 
 is_true() {
     case "${1:-}" in
@@ -45,8 +48,24 @@ require_cmd() {
     fi
 }
 
+ensure_cmd_or_install() {
+    # Instala un paquete si el comando no existe
+    local cmd="$1"
+    local pkg="${2:-$1}"
+    if command -v "$cmd" >/dev/null 2>&1; then
+        return 0
+    fi
+    log_info "Instalando $pkg para obtener comando $cmd..."
+    sudo apt-get install -y "$pkg" || {
+        log_error "No se pudo instalar $pkg"
+        return 1
+    }
+}
+
 ensure_legacy_raspbian_repo_if_needed() {
-    # pi_video_looper sobre Buster legacy puede requerir el repo legacy.raspbian.org.
+    # En Buster, los repos de raspbian.org y archive.debian.org tienen GPG vencidos.
+    # No se agrega ningún source sin [trusted=yes]: eso provoca el error de GPG.
+    # En su lugar, configure_buster_archive_sources_trusted se llama proactivamente.
     if ! command -v lsb_release >/dev/null 2>&1; then
         return
     fi
@@ -57,24 +76,71 @@ ensure_legacy_raspbian_repo_if_needed() {
         return
     fi
 
-    local line="deb http://legacy.raspbian.org/raspbian/ buster main contrib non-free rpi"
-    if ! grep -Fq "$line" /etc/apt/sources.list 2>/dev/null; then
-        log_info "Agregando repo legacy de Raspbian para Buster..."
-        echo "$line" | sudo tee -a /etc/apt/sources.list >/dev/null
+    # Aplicar fixes de confianza ANTES del primer apt update para evitar ciclos de error.
+    configure_buster_archive_sources_trusted
+}
+
+configure_buster_archive_sources_trusted() {
+    # En Buster legacy, los GPG keys de archive.debian.org y raspbian.org están vencidos.
+    # Solución: comentar todas las fuentes problemáticas y usar trusted=yes.
+    # Idempotente: no hace nada si ya está aplicado.
+    if ! command -v lsb_release >/dev/null 2>&1; then
+        return
     fi
+
+    local codename
+    codename="$(lsb_release -sc 2>/dev/null || true)"
+    if [ "$codename" != "buster" ]; then
+        return
+    fi
+
+    # Evitar doble aplicación
+    if [ -f /etc/apt/sources.list.d/vidloop-buster-archive.list ]; then
+        return
+    fi
+
+    log_warn "Aplicando fuentes APT confiables para Buster (trusted=yes)..."
+
+    if [ -f /etc/apt/sources.list ]; then
+        sudo cp /etc/apt/sources.list /etc/apt/sources.list.bak.$(date +%s)
+        # Comentar archive.debian.org (GPG expirado)
+        sudo sed -i 's|^deb \(.*archive\.debian\.org.*\)|# \1|g' /etc/apt/sources.list
+        sudo sed -i 's|^deb-src \(.*archive\.debian\.org.*\)|# \1|g' /etc/apt/sources.list
+        # Comentar raspbian.org y raspberrypi.org (GPG expirado en Buster old)
+        sudo sed -i 's|^deb \(.*raspbian\.org.*\)|# \1|g' /etc/apt/sources.list
+        sudo sed -i 's|^deb-src \(.*raspbian\.org.*\)|# \1|g' /etc/apt/sources.list
+        sudo sed -i 's|^deb \(.*raspberrypi\.org.*\)|# \1|g' /etc/apt/sources.list
+        sudo sed -i 's|^deb-src \(.*raspberrypi\.org.*\)|# \1|g' /etc/apt/sources.list
+    fi
+
+    # También limpiar cualquier source.list.d que pueda tener los repos problemáticos
+    for f in /etc/apt/sources.list.d/*.list; do
+        [ -f "$f" ] || continue
+        [[ "$f" == *"vidloop"* ]] && continue
+        sudo sed -i 's|^deb \(.*archive\.debian\.org.*\)|# \1|g' "$f" 2>/dev/null || true
+        sudo sed -i 's|^deb \(.*raspbian\.org.*\)|# \1|g' "$f" 2>/dev/null || true
+        sudo sed -i 's|^deb \(.*raspberrypi\.org.*\)|# \1|g' "$f" 2>/dev/null || true
+    done
+
+    sudo tee /etc/apt/sources.list.d/vidloop-buster-archive.list >/dev/null <<'EOF'
+deb [trusted=yes] http://archive.debian.org/debian buster main contrib non-free
+deb [trusted=yes] http://archive.debian.org/debian buster-backports main
+EOF
+
+    sudo mkdir -p /etc/apt/apt.conf.d
+    echo 'APT::Get::AllowUnauthenticated "true";' | sudo tee /etc/apt/apt.conf.d/99-vidloop-unauthenticated >/dev/null
 }
 
 upsert_kv() {
-    # Reemplaza o agrega una clave de config de forma idempotente.
+    # Reemplaza o agrega una clave de config de forma ESTRICTAMENTE idempotente.
     local file="$1"
     local key="$2"
     local value="$3"
     sudo touch "$file"
-    if sudo grep -Eq "^[[:space:]]*${key}=" "$file"; then
-        sudo sed -i "s|^[[:space:]]*${key}=.*|${key}=${value}|" "$file"
-    else
-        echo "${key}=${value}" | sudo tee -a "$file" >/dev/null
-    fi
+    # Primero eliminar TODAS las líneas que matcheen el key (comentadas o no)
+    sudo sed -i "/^[[:space:]]*#*[[:space:]]*${key}=/d" "$file"
+    # Luego agregar EXACTAMENTE UNA línea con el nuevo valor
+    echo "${key}=${value}" | sudo tee -a "$file" >/dev/null
 }
 
 append_once() {
@@ -84,6 +150,18 @@ append_once() {
     if ! sudo grep -Fxq "$line" "$file"; then
         echo "$line" | sudo tee -a "$file" >/dev/null
     fi
+}
+
+user_has_authorized_keys() {
+    local user_name="$1"
+    local user_home
+    user_home="$(eval echo "~${user_name}")"
+    local auth_file="${user_home}/.ssh/authorized_keys"
+
+    if [ -s "$auth_file" ]; then
+        return 0
+    fi
+    return 1
 }
 
 echo -e "${BLUE}================================================${NC}"
@@ -96,6 +174,13 @@ require_cmd awk
 require_cmd sed
 require_cmd tr
 require_cmd head
+
+# Validar que sudo funciona sin password (necesario para el script)
+if ! sudo -n true 2>/dev/null; then
+    log_error "sudo sin password es requerido. Configura en /etc/sudoers: $SUDO_USER ALL=(ALL) NOPASSWD:ALL"
+    exit 1
+fi
+log_ok "Permisos de sudo validados"
 
 WG_INTERFACE="${VIDLOOP_WG_INTERFACE:-wg0}"
 
@@ -119,22 +204,46 @@ fi
 ensure_legacy_raspbian_repo_if_needed
 
 log_info "Actualizando paquetes..."
-sudo apt update -y
+APT_ATTEMPT=1
+while [ $APT_ATTEMPT -le 3 ]; do
+    if sudo apt-get update -o Acquire::Check-Valid-Until=false 2>&1; then
+        log_ok "apt-get update exitoso en intento $APT_ATTEMPT"
+        break
+    else
+        log_warn "Intento $APT_ATTEMPT de apt-get update falló, aplicando fallback..."
+        
+        if [ $APT_ATTEMPT -eq 1 ]; then
+            configure_buster_archive_sources_trusted
+        elif [ $APT_ATTEMPT -eq 2 ]; then
+            log_warn "Habilitando paquetes no autenticados..."
+            sudo mkdir -p /etc/apt/apt.conf.d
+            echo 'APT::Get::AllowUnauthenticated "true";' | sudo tee /etc/apt/apt.conf.d/99-vidloop-unauthenticated >/dev/null
+        fi
+        
+        if [ $APT_ATTEMPT -eq 3 ]; then
+            log_error "apt-get update falló después de 3 intentos. Verifica la conexión a internet."
+            exit 1
+        fi
+        
+        sleep 2
+        APT_ATTEMPT=$((APT_ATTEMPT + 1))
+    fi
+done
 if is_true "${VIDLOOP_FULL_UPGRADE:-true}"; then
     log_info "Aplicando full-upgrade (puede tardar)..."
-    sudo apt full-upgrade -y
+    sudo apt-get full-upgrade -y
 else
     log_warn "VIDLOOP_FULL_UPGRADE=false: se omite full-upgrade"
 fi
 log_ok "Indice de paquetes actualizado"
 
 log_info "Instalando dependencias base..."
-export DEBIAN_FRONTEND=noninteractive
-sudo apt install -y \
+sudo apt-get install -y \
     htop \
     iotop \
     curl \
     wget \
+    git \
     unzip \
     ca-certificates \
     ffmpeg \
@@ -144,10 +253,24 @@ sudo apt install -y \
     || { log_error "Fallo la instalacion de dependencias"; exit 1; }
 log_ok "Dependencias base instaladas"
 
+# Validar que supervisorctl esté disponible ANTES de proceder
+ensure_cmd_or_install "supervisorctl" "supervisor" || {
+    log_error "supervisor es requerido para pi_video_looper"
+    exit 1
+}
+
 log_info "Instalando/validando pi_video_looper..."
-if sudo systemctl list-unit-files | grep -q '^video_looper\.service'; then
-    log_info "Servicio video_looper ya existe, se conserva instalacion"
-else
+# pi_video_looper usa supervisor (NO systemd). Verificamos via supervisorctl.
+VIDEO_LOOPER_INSTALLED=false
+if command -v supervisorctl >/dev/null 2>&1 && sudo supervisorctl status video_looper 2>/dev/null | grep -q 'video_looper'; then
+    VIDEO_LOOPER_INSTALLED=true
+    log_info "Servicio video_looper ya existe en supervisor, se conserva instalacion"
+elif sudo systemctl list-unit-files 2>/dev/null | grep -q '^video_looper\.service'; then
+    VIDEO_LOOPER_INSTALLED=true
+    log_info "Servicio video_looper ya existe en systemd, se conserva instalacion"
+fi
+
+if [ "$VIDEO_LOOPER_INSTALLED" = "false" ]; then
     TMP_LOOPER_DIR="/tmp/pi_video_looper"
     rm -rf "$TMP_LOOPER_DIR"
 
@@ -178,27 +301,65 @@ else
     fi
 fi
 
+# Desplegar video_looper.ini al path correcto: /boot/video_looper.ini
+# (pi_video_looper lee siempre de /boot/, no de /opt/)
 if [ -f "$SCRIPT_DIR/video_looper.ini" ]; then
-    sudo install -m 0644 "$SCRIPT_DIR/video_looper.ini" /opt/video_looper/video_looper.ini
-    sudo sed -i 's|/home/pi/VIDLOOP44|/home/'"$VIDLOOP_SYSTEM_USER"'/VIDLOOP44|g' /opt/video_looper/video_looper.ini
-    log_ok "video_looper.ini desplegado en /opt/video_looper/video_looper.ini"
+    sudo cp "$SCRIPT_DIR/video_looper.ini" /boot/video_looper.ini
+    sudo sed -i "s|/home/pi/VIDLOOP44|/home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44|g" /boot/video_looper.ini
+    sudo chmod 644 /boot/video_looper.ini
+    log_ok "video_looper.ini desplegado en /boot/video_looper.ini"
 else
     log_warn "No se encontro video_looper.ini junto al script, se mantiene config existente"
+    # Al menos corregir el path del usuario en el ini existente
+    if [ -f /boot/video_looper.ini ]; then
+        sudo sed -i "s|/home/pi/VIDLOOP44|/home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44|g" /boot/video_looper.ini
+        log_info "Path de usuario corregido en /boot/video_looper.ini existente"
+    fi
 fi
 
-sudo systemctl enable video_looper 2>/dev/null || true
-sudo systemctl restart video_looper 2>/dev/null || true
+# Wrapper systemd para compatibilidad con dashboard (pi_video_looper usa supervisor internamente)
+log_info "Creando wrapper systemd para video_looper..."
 
-# Hace mas robusto el reinicio del servicio ante cuelgues.
-sudo mkdir -p /etc/systemd/system/video_looper.service.d
-sudo tee /etc/systemd/system/video_looper.service.d/override.conf >/dev/null <<'EOF'
+# Eliminar drop-ins obsoletos que puedan conflictuar con Type=oneshot
+sudo rm -rf /etc/systemd/system/video_looper.service.d/ 2>/dev/null || true
+
+# Detectar nombre del servicio supervisor en este sistema
+_SUPERVISOR_AFTER=""
+if sudo systemctl list-unit-files 2>/dev/null | grep -q '^supervisord\.service'; then
+    _SUPERVISOR_AFTER="After=supervisord.service"$'\n'"Requires=supervisord.service"
+elif sudo systemctl list-unit-files 2>/dev/null | grep -q '^supervisor\.service'; then
+    _SUPERVISOR_AFTER="After=supervisor.service"$'\n'"Requires=supervisor.service"
+else
+    _SUPERVISOR_AFTER="After=multi-user.target"
+fi
+
+# Detectar ruta de supervisorctl
+_SUPERVISORCTL=$(command -v supervisorctl 2>/dev/null || echo "/usr/bin/supervisorctl")
+
+sudo tee /etc/systemd/system/video_looper.service >/dev/null <<EOF
+[Unit]
+Description=VIDLOOP video_looper (supervisor wrapper)
+${_SUPERVISOR_AFTER}
+
 [Service]
-Restart=always
-RestartSec=2
-StartLimitIntervalSec=0
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=${_SUPERVISORCTL} start video_looper
+ExecStop=${_SUPERVISORCTL} stop video_looper
+ExecReload=${_SUPERVISORCTL} restart video_looper
+
+[Install]
+WantedBy=multi-user.target
 EOF
+
 sudo systemctl daemon-reload
-sudo systemctl restart video_looper 2>/dev/null || true
+sudo systemctl enable video_looper 2>/dev/null || true
+sudo systemctl start video_looper 2>/dev/null || true
+
+# Reiniciar supervisord para que aplique el ini actualizado
+if command -v supervisorctl >/dev/null 2>&1; then
+    sudo supervisorctl restart video_looper 2>/dev/null || true
+fi
 log_ok "pi_video_looper listo"
 
 if is_true "$IS_RPI"; then
@@ -242,18 +403,27 @@ echo 'ACTION=="add|change", KERNEL=="sd[a-z]*", ATTR{queue/scheduler}="deadline"
 sudo udevadm control --reload-rules || true
 log_ok "Kernel y reglas I/O aplicadas"
 
-log_info "Instalando ZeroTier (metodo APT)..."
-if sudo apt install -y zerotier-one; then
-    sudo systemctl enable --now zerotier-one
-    log_ok "ZeroTier instalado y activo"
+log_info "Instalando ZeroTier..."
+if command -v zerotier-one >/dev/null 2>&1; then
+    log_ok "ZeroTier ya está instalado"
+elif sudo apt-get install -y zerotier-one 2>/dev/null; then
+    log_ok "ZeroTier instalado vía APT"
+elif command -v curl >/dev/null 2>&1; then
+    log_info "Instalando ZeroTier via script oficial..."
+    curl -fsSL https://install.zerotier.com | sudo bash
+    log_ok "ZeroTier instalado vía script oficial"
 else
-    log_warn "No se pudo instalar zerotier-one desde APT."
-    log_warn "Instalalo manualmente con un metodo firmado por tu organizacion."
+    log_warn "No se pudo instalar ZeroTier. Instala manualmente: curl -fsSL https://install.zerotier.com | sudo bash"
+fi
+
+if command -v zerotier-one >/dev/null 2>&1; then
+    sudo systemctl enable --now zerotier-one 2>/dev/null || true
+    log_ok "ZeroTier activo"
 fi
 
 log_info "Configurando WireGuard (opcional)..."
 if is_true "${ENABLE_WIREGUARD:-false}"; then
-    sudo apt install -y wireguard wireguard-tools resolvconf || {
+    sudo apt-get install -y wireguard wireguard-tools resolvconf || {
         log_error "No se pudo instalar WireGuard"
         exit 1
     }
@@ -283,13 +453,21 @@ log_info "Configurando usuario ${VIDLOOP_SYSTEM_USER}..."
 if ! id -u "$VIDLOOP_SYSTEM_USER" >/dev/null 2>&1; then
     sudo adduser --disabled-password --gecos "" "$VIDLOOP_SYSTEM_USER"
     sudo usermod -aG sudo "$VIDLOOP_SYSTEM_USER"
+    log_ok "Usuario $VIDLOOP_SYSTEM_USER creado"
+else
+    log_info "Usuario $VIDLOOP_SYSTEM_USER ya existe"
+    # Asegurar que el usuario tiene permisos sudo
+    if ! sudo -l -U "$VIDLOOP_SYSTEM_USER" 2>/dev/null | grep -q '(ALL)'; then
+        sudo usermod -aG sudo "$VIDLOOP_SYSTEM_USER"
+        log_info "Permisos sudo agregados a $VIDLOOP_SYSTEM_USER"
+    fi
 fi
 
 ADMIN_PASS="$VIDLOOP_SYSTEM_PASS"
 if [ -z "$ADMIN_PASS" ]; then
     if is_true "$VIDLOOP_NONINTERACTIVE"; then
         ADMIN_PASS="$(generate_password)"
-        log_warn "Password vacia detectada de forma inesperada, se genero una clave automatica para ${VIDLOOP_SYSTEM_USER}"
+        log_warn "Password vacía detectada de forma inesperada, se generó una clave automática para ${VIDLOOP_SYSTEM_USER}"
     else
         while true; do
             read -rsp "Ingresa nueva clave para usuario ${VIDLOOP_SYSTEM_USER}: " ADMIN_PASS
@@ -297,7 +475,7 @@ if [ -z "$ADMIN_PASS" ]; then
             read -rsp "Confirma clave para usuario ${VIDLOOP_SYSTEM_USER}: " ADMIN_PASS_CONFIRM
             echo
             if [ -z "$ADMIN_PASS" ]; then
-                log_warn "La clave no puede estar vacia"
+                log_warn "La clave no puede estar vacía"
                 continue
             fi
             if [ "$ADMIN_PASS" != "$ADMIN_PASS_CONFIRM" ]; then
@@ -327,8 +505,8 @@ log_ok "Carpeta de videos lista en $VIDEO_DIR"
 
 if is_true "$VIDLOOP_ENABLE_MEDIA_NORMALIZER"; then
         if ! [[ "$VIDLOOP_IMAGE_DURATION_SEC" =~ ^[0-9]+$ ]] || [ "$VIDLOOP_IMAGE_DURATION_SEC" -lt 1 ]; then
-                log_warn "VIDLOOP_IMAGE_DURATION_SEC invalido, usando 5"
-                VIDLOOP_IMAGE_DURATION_SEC=5
+                log_warn "VIDLOOP_IMAGE_DURATION_SEC invalido, usando 20"
+                VIDLOOP_IMAGE_DURATION_SEC=20
         fi
         if ! [[ "$VIDLOOP_IMAGE_SCAN_INTERVAL_MIN" =~ ^[0-9]+$ ]] || [ "$VIDLOOP_IMAGE_SCAN_INTERVAL_MIN" -lt 1 ]; then
                 log_warn "VIDLOOP_IMAGE_SCAN_INTERVAL_MIN invalido, usando 1"
@@ -370,7 +548,8 @@ for src in "\$MEDIA_DIR"/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}; do
 done
 
 if [ "\$CHANGED" -eq 1 ]; then
-    systemctl restart video_looper >/dev/null 2>&1 || true
+    # video_looper está en supervisor, no systemd - usar supervisorctl
+    supervisorctl restart video_looper >/dev/null 2>&1 || systemctl restart video_looper >/dev/null 2>&1 || true
 fi
 EOF
         sudo chmod +x /usr/local/bin/vidloop-media-normalizer.sh
@@ -410,11 +589,32 @@ log_info "Endureciendo SSH..."
 SSHD="/etc/ssh/sshd_config"
 sudo cp "$SSHD" "${SSHD}.bak.$(date +%s)"
 
-if is_true "${ENABLE_SSH_PASSWORD_AUTH:-false}"; then
+# Forzamos password auth por defecto para despliegues remotos en campo.
+SSH_CONF_D="/etc/ssh/sshd_config.d"
+sudo mkdir -p "$SSH_CONF_D"
+sudo tee "$SSH_CONF_D/00-vidloop-auth.conf" >/dev/null <<'EOF'
+PasswordAuthentication yes
+KbdInteractiveAuthentication yes
+UsePAM yes
+PubkeyAuthentication yes
+EOF
+
+if is_true "${ENABLE_SSH_PASSWORD_AUTH:-true}"; then
     upsert_kv "$SSHD" "PasswordAuthentication" "yes"
-    log_warn "PasswordAuthentication habilitado por ENABLE_SSH_PASSWORD_AUTH=true"
+    log_warn "PasswordAuthentication habilitado (default: true)"
 else
-    upsert_kv "$SSHD" "PasswordAuthentication" "no"
+    if user_has_authorized_keys "$VIDLOOP_SYSTEM_USER" || user_has_authorized_keys "pi"; then
+        upsert_kv "$SSHD" "PasswordAuthentication" "no"
+        sudo tee "$SSH_CONF_D/00-vidloop-auth.conf" >/dev/null <<'EOF'
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+UsePAM yes
+PubkeyAuthentication yes
+EOF
+    else
+        upsert_kv "$SSHD" "PasswordAuthentication" "yes"
+        log_warn "No hay authorized_keys detectadas; se mantiene PasswordAuthentication=yes para evitar bloqueo remoto"
+    fi
 fi
 upsert_kv "$SSHD" "PermitRootLogin" "no"
 
@@ -441,12 +641,20 @@ if is_true "$IS_RPI" && command -v tvservice >/dev/null 2>&1; then
     sudo tee /usr/local/bin/hdmi-keepalive.sh >/dev/null <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
+# Guard: no ejecutar si ya hay HDMI keepalive activo
+if pgrep -f hdmi-keepalive.sh | grep -vq $$; then
+    exit 0
+fi
 while true; do
     if tvservice -s 2>/dev/null | grep -q "TV is off"; then
-        tvservice -p || true
-        chvt 6 && chvt 7 || true
+        log_msg="[HDMI] Intentando reconexi+on"
+        tvservice -p 2>/dev/null || true
+        # chvt solo si fbset está disponible para cambiar de VT
+        if command -v fbset >/dev/null 2>&1; then
+            chvt 6 2>/dev/null && sleep 0.5 && chvt 7 2>/dev/null || true
+        fi
     fi
-    sleep 5
+    sleep 10
 done
 EOF
     sudo chmod +x /usr/local/bin/hdmi-keepalive.sh
@@ -459,14 +667,17 @@ After=multi-user.target
 [Service]
 ExecStart=/usr/local/bin/hdmi-keepalive.sh
 Restart=always
+RestartSec=5
 User=root
+StandardOutput=journal
+StandardError=journal
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
     sudo systemctl daemon-reload
-    sudo systemctl enable --now hdmi-keepalive.service
+    sudo systemctl enable --now hdmi-keepalive.service 2>/dev/null || true
     log_ok "HDMI keepalive activo"
 else
     log_warn "tvservice no disponible: se omite servicio HDMI keepalive"
@@ -479,7 +690,7 @@ echo -e "${GREEN}==============================================${NC}"
 echo -e "${YELLOW}Usuario SSH:${NC} ${VIDLOOP_SYSTEM_USER}"
 echo -e "${YELLOW}Password SSH:${NC} ${VIDLOOP_SYSTEM_PASS}"
 echo -e "${YELLOW}Carpeta videos:${NC} /home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
-echo -e "${YELLOW}Nota:${NC} PasswordAuthentication por defecto queda en NO"
+echo -e "${YELLOW}Nota:${NC} PasswordAuthentication por defecto queda en SI"
 
 if is_true "$VIDLOOP_AUTO_REBOOT"; then
     log_info "Reinicio automatico habilitado (VIDLOOP_AUTO_REBOOT=true)"
