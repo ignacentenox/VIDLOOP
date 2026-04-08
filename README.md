@@ -16,6 +16,7 @@ Imagen de referencia funcional:
 Notas:
 - Evitar imágenes modernas no-legacy para despliegues críticos de videoloop.
 - Raspberry Pi 5 no es objetivo recomendado para este stack heredado.
+- En Buster Legacy, este proyecto agrega automáticamente el repo legacy de Raspbian cuando hace falta.
 
 ## Estado actual del proyecto
 
@@ -45,6 +46,7 @@ El instalador V3 está en modo no interactivo por defecto y deja el equipo opera
 - `apt update` y `apt full-upgrade` (por defecto)
 - instala dependencias base
 - instala `pi_video_looper` si no está presente
+- instala `pi_video_looper` con opción `no_hello_video` por defecto
 - aplica `video_looper.ini` en `/opt/video_looper/video_looper.ini`
 - ajusta ruta de videos a `/home/admin/VIDLOOP44`
 - habilita y reinicia `video_looper`
@@ -54,6 +56,20 @@ El instalador V3 está en modo no interactivo por defecto y deja el equipo opera
 - soporta ZeroTier (APT)
 - soporta WireGuard opcional
 - reinicia automáticamente al finalizar (por defecto)
+
+## Referencia oficial de pi_video_looper y cómo se aplica acá
+
+El README oficial indica:
+- usar Raspberry Pi OS Lite Legacy (Buster)
+- en algunos casos agregar repo `legacy.raspbian.org`
+- instalar con `install.sh` (opcional `no_hello_video`)
+- considerar que una reinstalación puede sobrescribir `/boot/video_looper.ini`
+
+En VIDLOOP V3 eso ya está contemplado:
+- detecta Buster y agrega repo legacy si hace falta
+- instala con `no_hello_video` por defecto
+- hace backup de `/boot/video_looper.ini` antes de instalar si existe
+- vuelve a aplicar la configuración local del proyecto luego de instalar
 
 ## Variables de entorno útiles
 

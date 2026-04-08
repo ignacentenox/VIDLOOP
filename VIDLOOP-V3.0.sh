@@ -43,6 +43,25 @@ require_cmd() {
     fi
 }
 
+ensure_legacy_raspbian_repo_if_needed() {
+    # pi_video_looper sobre Buster legacy puede requerir el repo legacy.raspbian.org.
+    if ! command -v lsb_release >/dev/null 2>&1; then
+        return
+    fi
+
+    local codename
+    codename="$(lsb_release -sc 2>/dev/null || true)"
+    if [ "$codename" != "buster" ]; then
+        return
+    fi
+
+    local line="deb http://legacy.raspbian.org/raspbian/ buster main contrib non-free rpi"
+    if ! grep -Fq "$line" /etc/apt/sources.list 2>/dev/null; then
+        log_info "Agregando repo legacy de Raspbian para Buster..."
+        echo "$line" | sudo tee -a /etc/apt/sources.list >/dev/null
+    fi
+}
+
 upsert_kv() {
     # Reemplaza o agrega una clave de config de forma idempotente.
     local file="$1"
@@ -96,6 +115,8 @@ else
     log_warn "No estas en Raspberry Pi. Se aplican solo pasos compatibles."
 fi
 
+ensure_legacy_raspbian_repo_if_needed
+
 log_info "Actualizando paquetes..."
 sudo apt update -y
 if is_true "${VIDLOOP_FULL_UPGRADE:-true}"; then
@@ -127,7 +148,16 @@ else
     TMP_LOOPER_DIR="/tmp/pi_video_looper"
     rm -rf "$TMP_LOOPER_DIR"
     git clone --depth 1 https://github.com/adafruit/pi_video_looper.git "$TMP_LOOPER_DIR"
-    sudo bash "$TMP_LOOPER_DIR/install.sh"
+
+    if [ -f /boot/video_looper.ini ]; then
+        sudo cp /boot/video_looper.ini /boot/video_looper.ini_backup.$(date +%s) || true
+    fi
+
+    if is_true "${VIDLOOP_NO_HELLO_VIDEO:-true}"; then
+        sudo bash "$TMP_LOOPER_DIR/install.sh" no_hello_video
+    else
+        sudo bash "$TMP_LOOPER_DIR/install.sh"
+    fi
 fi
 
 if [ -f "$SCRIPT_DIR/video_looper.ini" ]; then
