@@ -1,4 +1,4 @@
-name: Build VIDLOOP Image Release
+name: Build VIDLOOP Legacy Image Release
 
 on:
   workflow_dispatch:

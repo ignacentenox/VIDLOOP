@@ -6,6 +6,17 @@ Base de reproducción:
 - https://videolooper.de/
 - https://github.com/adafruit/pi_video_looper.git
 
+## Compatibilidad importante
+
+`pi_video_looper` depende de `omxplayer`, por lo que la base recomendada es **Raspberry Pi OS Lite Legacy (armhf)**.
+
+Imagen de referencia funcional:
+- https://downloads.raspberrypi.com/raspios_oldstable_lite_armhf/images/raspios_oldstable_lite_armhf-2022-01-28/2022-01-28-raspios-buster-armhf-lite.zip
+
+Notas:
+- Evitar imágenes modernas no-legacy para despliegues críticos de videoloop.
+- Raspberry Pi 5 no es objetivo recomendado para este stack heredado.
+
 ## Estado actual del proyecto
 
 Este repositorio ya incluye:
@@ -16,7 +27,7 @@ Este repositorio ya incluye:
 
 ## Instalación rápida (SD vacía)
 
-1. Flashear Raspberry Pi OS en la SD.
+1. Flashear Raspberry Pi OS **Lite Legacy (armhf)** en la SD.
 2. Arrancar la Raspberry con internet.
 3. Ejecutar:
 

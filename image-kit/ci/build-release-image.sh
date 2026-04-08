@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Build a VIDLOOP release image from Raspberry Pi OS Lite (arm64) on GitHub Actions.
+# Build a VIDLOOP release image from Raspberry Pi OS Lite Legacy (armhf) on GitHub Actions.
 # The image is pre-provisioned to run VIDLOOP-V3.0.sh automatically on first boot.
 
 WORKDIR="${WORKDIR:-$PWD/.work-image}"
 OUTPUT_DIR="${OUTPUT_DIR:-$PWD/dist}"
-IMAGE_URL="${IMAGE_URL:-https://downloads.raspberrypi.com/raspios_lite_arm64_latest}"
-RELEASE_NAME="${RELEASE_NAME:-vidloop-rpios-lite-arm64}"
+IMAGE_URL="${IMAGE_URL:-https://downloads.raspberrypi.com/raspios_oldstable_lite_armhf/images/raspios_oldstable_lite_armhf-2022-01-28/2022-01-28-raspios-buster-armhf-lite.zip}"
+RELEASE_NAME="${RELEASE_NAME:-vidloop-rpios-legacy-armhf}"
 
 mkdir -p "$WORKDIR" "$OUTPUT_DIR"
 cd "$WORKDIR"
