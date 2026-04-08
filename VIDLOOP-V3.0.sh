@@ -59,6 +59,9 @@ echo -e "${BLUE}================================================${NC}"
 require_cmd sudo
 require_cmd awk
 require_cmd sed
+require_cmd git
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CURRENT_USER=$(whoami)
 TARGET_USER=${SUDO_USER:-$CURRENT_USER}
@@ -77,6 +80,12 @@ fi
 
 log_info "Actualizando paquetes..."
 sudo apt update -y
+if is_true "${VIDLOOP_FULL_UPGRADE:-true}"; then
+    log_info "Aplicando full-upgrade (puede tardar)..."
+    sudo apt full-upgrade -y
+else
+    log_warn "VIDLOOP_FULL_UPGRADE=false: se omite full-upgrade"
+fi
 log_ok "Indice de paquetes actualizado"
 
 log_info "Instalando dependencias base..."
@@ -85,9 +94,33 @@ sudo apt install -y \
     iotop \
     curl \
     wget \
+    python3 \
+    python3-pip \
     openssh-server \
     || { log_error "Fallo la instalacion de dependencias"; exit 1; }
 log_ok "Dependencias base instaladas"
+
+log_info "Instalando/validando pi_video_looper..."
+if sudo systemctl list-unit-files | grep -q '^video_looper\.service'; then
+    log_info "Servicio video_looper ya existe, se conserva instalacion"
+else
+    TMP_LOOPER_DIR="/tmp/pi_video_looper"
+    rm -rf "$TMP_LOOPER_DIR"
+    git clone --depth 1 https://github.com/adafruit/pi_video_looper.git "$TMP_LOOPER_DIR"
+    sudo bash "$TMP_LOOPER_DIR/install.sh"
+fi
+
+if [ -f "$SCRIPT_DIR/video_looper.ini" ]; then
+    sudo install -m 0644 "$SCRIPT_DIR/video_looper.ini" /opt/video_looper/video_looper.ini
+    sudo sed -i 's|/home/pi/VIDLOOP44|/home/admin/VIDLOOP44|g' /opt/video_looper/video_looper.ini
+    log_ok "video_looper.ini desplegado en /opt/video_looper/video_looper.ini"
+else
+    log_warn "No se encontro video_looper.ini junto al script, se mantiene config existente"
+fi
+
+sudo systemctl enable video_looper 2>/dev/null || true
+sudo systemctl restart video_looper 2>/dev/null || true
+log_ok "pi_video_looper listo"
 
 if is_true "$IS_RPI"; then
     log_info "Aplicando configuracion HDMI segura..."
