@@ -552,16 +552,15 @@ set -euo pipefail
 
 MEDIA_DIR="/home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
 DURATION_SEC="${VIDLOOP_IMAGE_DURATION_SEC}"
+MANIFEST="\$MEDIA_DIR/.source_manifest"
 CHANGED=0
 
-if ! command -v ffmpeg >/dev/null 2>&1; then
-    exit 0
-fi
+if ! command -v ffmpeg >/dev/null 2>&1; then exit 0; fi
+if [ ! -d "\$MEDIA_DIR" ]; then exit 0; fi
 
-if [ ! -d "\$MEDIA_DIR" ]; then
-    exit 0
-fi
+if [ ! -f "\$MANIFEST" ]; then echo '' > "\$MANIFEST"; fi
 
+# PASO 1: Procesar fotos NUEVAS o MODIFICADAS
 shopt -s nullglob
 for src in "\$MEDIA_DIR"/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}; do
     [ -f "\$src" ] || continue
@@ -569,63 +568,68 @@ for src in "\$MEDIA_DIR"/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}; do
     stem="\${base%.*}"
     out="\$MEDIA_DIR/__img__\${stem}.mp4"
 
-    if [ -f "\$out" ] && [ "\$out" -nt "\$src" ]; then
-        continue
+    if [ ! -f "\$out" ] || [ "\$src" -nt "\$out" ]; then
+        ffmpeg -y -loop 1 -t "\$DURATION_SEC" -i "\$src" \
+            -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
+            -c:v libx264 -pix_fmt yuv420p -r 25 "\$out" >/dev/null 2>&1 && CHANGED=1 || true
     fi
-
-    ffmpeg -y -loop 1 -t "\$DURATION_SEC" -i "\$src" \
-        -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
-        -c:v libx264 -pix_fmt yuv420p -r 25 "\$out" >/dev/null 2>&1 && CHANGED=1 || true
+    grep -Fxq "\$base" "\$MANIFEST" 2>/dev/null || echo "\$base" >> "\$MANIFEST"
 done
 
-# ============================================================
-# Concatenar TODOS los mp4 en un unico archivo para 0ms de gap
-# omxplayer loopeando 1 solo archivo = transicion 100% seamless
-# ============================================================
+# PASO 2: LIMPIAR FOTOS ELIMINADAS - foto borrada = mp4 huérfano borrado
+temp_manifest="\$(mktemp)"
+while IFS= read -r stored_photo; do
+    [ -z "\$stored_photo" ] && continue
+    found=0
+    for ext in jpg jpeg png webp JPG JPEG PNG WEBP; do
+        if [ -f "\$MEDIA_DIR/\$stored_photo" ] 2>/dev/null; then
+            found=1
+            break
+        fi
+    done
+    if [ \$found -eq 0 ]; then
+        stem="\${stored_photo%.*}"
+        orphan="\$MEDIA_DIR/__img__\${stem}.mp4"
+        [ -f "\$orphan" ] && rm -f "\$orphan" && CHANGED=1
+    else
+        echo "\$stored_photo" >> "\$temp_manifest"
+    fi
+done < "\$MANIFEST"
+mv "\$temp_manifest" "\$MANIFEST"
+
+# PASO 3: Concatenar en UN archivo seamless (0ms gap)
 CONCAT_OUT="\$MEDIA_DIR/__seamless_playlist__.mp4"
 CONCAT_LIST="\$MEDIA_DIR/.concat_list.txt"
 MP4_COUNT=0
 > "\$CONCAT_LIST"
-for mp4 in "\$MEDIA_DIR"/*.mp4; do
+for mp4 in \$(ls -1 "\$MEDIA_DIR"/__img__*.mp4 2>/dev/null | sort); do
     [ -f "\$mp4" ] || continue
-    bname="\$(basename "\$mp4")"
-    # No incluir el propio concat en la lista
-    [ "\$bname" = "__seamless_playlist__.mp4" ] && continue
     echo "file '\$mp4'" >> "\$CONCAT_LIST"
     MP4_COUNT=\$((MP4_COUNT + 1))
 done
 
-if [ "\$MP4_COUNT" -gt 1 ]; then
-    # Solo regenerar si cambio algo o no existe el concat
-    NEW_HASH="\$(cat "\$CONCAT_LIST" | md5sum | cut -d' ' -f1)"
+if [ \$MP4_COUNT -gt 1 ]; then
+    NEW_HASH="\$(md5sum "\$CONCAT_LIST" | cut -d' ' -f1)"
     OLD_HASH=""
-    [ -f "\$MEDIA_DIR/.concat_hash" ] && OLD_HASH="\$(cat "\$MEDIA_DIR/.concat_hash")"
+    HASH_FILE="\$MEDIA_DIR/.concat.hash"
+    [ -f "\$HASH_FILE" ] && OLD_HASH="\$(cat \$HASH_FILE)"
     if [ "\$CHANGED" -eq 1 ] || [ ! -f "\$CONCAT_OUT" ] || [ "\$NEW_HASH" != "\$OLD_HASH" ]; then
-        ffmpeg -y -f concat -safe 0 -i "\$CONCAT_LIST" \
-            -c copy "\$CONCAT_OUT" >/dev/null 2>&1 && {
-            echo "\$NEW_HASH" > "\$MEDIA_DIR/.concat_hash"
-            # Mover originales a subcarpeta para que el looper solo vea el concat
-            mkdir -p "\$MEDIA_DIR/.originals"
-            for mp4 in "\$MEDIA_DIR"/*.mp4; do
-                [ -f "\$mp4" ] || continue
-                bname="\$(basename "\$mp4")"
-                [ "\$bname" = "__seamless_playlist__.mp4" ] && continue
-                mv "\$mp4" "\$MEDIA_DIR/.originals/" 2>/dev/null || true
-            done
+        ffmpeg -y -f concat -safe 0 -i "\$CONCAT_LIST" -c copy "\$CONCAT_OUT" >/dev/null 2>&1 && {
+            echo "\$NEW_HASH" > "\$HASH_FILE"
             CHANGED=1
         } || true
     fi
-elif [ "\$MP4_COUNT" -eq 1 ]; then
-    # Solo hay 1 mp4, omxplayer ya lo loopea seamless
-    # Limpiar concat viejo si existe
-    [ -f "\$CONCAT_OUT" ] && rm -f "\$CONCAT_OUT"
+elif [ \$MP4_COUNT -eq 1 ]; then
+    rm -f "\$CONCAT_OUT"
+else
+    rm -f "\$CONCAT_OUT"
 fi
 rm -f "\$CONCAT_LIST"
 
-if [ "\$CHANGED" -eq 1 ]; then
-    # video_looper está en supervisor, no systemd - usar supervisorctl
+if [ \$CHANGED -eq 1 ]; then
     supervisorctl restart video_looper >/dev/null 2>&1 || systemctl restart video_looper >/dev/null 2>&1 || true
 fi
+
 EOF
         sudo chmod +x /usr/local/bin/vidloop-media-normalizer.sh
 
