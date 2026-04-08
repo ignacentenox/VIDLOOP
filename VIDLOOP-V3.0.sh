@@ -17,6 +17,9 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 VIDLOOP_NONINTERACTIVE="${VIDLOOP_NONINTERACTIVE:-true}"
 VIDLOOP_AUTO_REBOOT="${VIDLOOP_AUTO_REBOOT:-true}"
+VIDLOOP_ENABLE_MEDIA_NORMALIZER="${VIDLOOP_ENABLE_MEDIA_NORMALIZER:-true}"
+VIDLOOP_IMAGE_DURATION_SEC="${VIDLOOP_IMAGE_DURATION_SEC:-5}"
+VIDLOOP_IMAGE_SCAN_INTERVAL_MIN="${VIDLOOP_IMAGE_SCAN_INTERVAL_MIN:-1}"
 
 is_true() {
     case "${1:-}" in
@@ -110,6 +113,7 @@ sudo apt install -y \
     iotop \
     curl \
     wget \
+    ffmpeg \
     python3 \
     python3-pip \
     openssh-server \
@@ -272,6 +276,87 @@ VIDEO_DIR="/home/admin/VIDLOOP44"
 sudo mkdir -p "$VIDEO_DIR"
 sudo chown -R admin:admin "$VIDEO_DIR"
 log_ok "Carpeta de videos lista en $VIDEO_DIR"
+
+if is_true "$VIDLOOP_ENABLE_MEDIA_NORMALIZER"; then
+        if ! [[ "$VIDLOOP_IMAGE_DURATION_SEC" =~ ^[0-9]+$ ]] || [ "$VIDLOOP_IMAGE_DURATION_SEC" -lt 1 ]; then
+                log_warn "VIDLOOP_IMAGE_DURATION_SEC invalido, usando 5"
+                VIDLOOP_IMAGE_DURATION_SEC=5
+        fi
+        if ! [[ "$VIDLOOP_IMAGE_SCAN_INTERVAL_MIN" =~ ^[0-9]+$ ]] || [ "$VIDLOOP_IMAGE_SCAN_INTERVAL_MIN" -lt 1 ]; then
+                log_warn "VIDLOOP_IMAGE_SCAN_INTERVAL_MIN invalido, usando 1"
+                VIDLOOP_IMAGE_SCAN_INTERVAL_MIN=1
+        fi
+
+        log_info "Configurando normalizador de media (imagenes -> mp4)..."
+
+        sudo tee /usr/local/bin/vidloop-media-normalizer.sh >/dev/null <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+
+MEDIA_DIR="/home/admin/VIDLOOP44"
+DURATION_SEC="${VIDLOOP_IMAGE_DURATION_SEC}"
+CHANGED=0
+
+if ! command -v ffmpeg >/dev/null 2>&1; then
+    exit 0
+fi
+
+if [ ! -d "\$MEDIA_DIR" ]; then
+    exit 0
+fi
+
+shopt -s nullglob
+for src in "\$MEDIA_DIR"/*.{jpg,jpeg,png,webp,JPG,JPEG,PNG,WEBP}; do
+    [ -f "\$src" ] || continue
+    base="\$(basename "\$src")"
+    stem="\${base%.*}"
+    out="\$MEDIA_DIR/__img__\${stem}.mp4"
+
+    if [ -f "\$out" ] && [ "\$out" -nt "\$src" ]; then
+        continue
+    fi
+
+    ffmpeg -y -loop 1 -t "\$DURATION_SEC" -i "\$src" \
+        -vf "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2" \
+        -c:v libx264 -pix_fmt yuv420p -r 25 "\$out" >/dev/null 2>&1 && CHANGED=1 || true
+done
+
+if [ "\$CHANGED" -eq 1 ]; then
+    systemctl restart video_looper >/dev/null 2>&1 || true
+fi
+EOF
+        sudo chmod +x /usr/local/bin/vidloop-media-normalizer.sh
+
+        sudo tee /etc/systemd/system/vidloop-media-normalizer.service >/dev/null <<'EOF'
+[Unit]
+Description=VIDLOOP media normalizer (images to mp4)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/vidloop-media-normalizer.sh
+EOF
+
+        sudo tee /etc/systemd/system/vidloop-media-normalizer.timer >/dev/null <<EOF
+[Unit]
+Description=Run VIDLOOP media normalizer periodically
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=${VIDLOOP_IMAGE_SCAN_INTERVAL_MIN}min
+Unit=vidloop-media-normalizer.service
+
+[Install]
+WantedBy=timers.target
+EOF
+
+        sudo systemctl daemon-reload
+        sudo systemctl enable --now vidloop-media-normalizer.timer
+        sudo systemctl start vidloop-media-normalizer.service || true
+        log_ok "Normalizador de media activo"
+else
+        log_info "Normalizador de media desactivado (VIDLOOP_ENABLE_MEDIA_NORMALIZER=false)"
+fi
 
 log_info "Endureciendo SSH..."
 SSHD="/etc/ssh/sshd_config"

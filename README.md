@@ -52,6 +52,9 @@ El instalador V3 está en modo no interactivo por defecto y deja el equipo opera
 - `VIDLOOP_FULL_UPGRADE=false` omite full-upgrade.
 - `VIDLOOP_AGGRESSIVE_TUNING=true` activa perfil agresivo de tuning.
 - `ENABLE_SSH_PASSWORD_AUTH=true` habilita autenticación por password en SSH.
+- `VIDLOOP_ENABLE_MEDIA_NORMALIZER=true` convierte imagenes en `VIDLOOP44` a MP4 automaticamente.
+- `VIDLOOP_IMAGE_DURATION_SEC=5` define duracion por foto convertida.
+- `VIDLOOP_IMAGE_SCAN_INTERVAL_MIN=1` define cada cuantos minutos escanear nuevas imagenes.
 
 ### WireGuard opcional
 - `ENABLE_WIREGUARD=true`
