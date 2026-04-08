@@ -148,6 +148,27 @@ Para los botones que ya tenes en dashboard:
 
 El V3 aplica un override de `systemd` para `video_looper` con `Restart=always`, mejorando recuperacion ante cuelgues.
 
+## Generar .img y publicar en Releases (automatico)
+
+El repo incluye workflow de GitHub Actions para construir una imagen Raspberry Pi OS Lite preprovisionada con VIDLOOP y subirla a Releases:
+
+- Workflow: `.github/workflows/build-image-release.yml`
+- Builder: `image-kit/ci/build-release-image.sh`
+
+Pasos:
+1. Ir a **Actions** en GitHub.
+2. Ejecutar **Build VIDLOOP Image Release**.
+3. Completar `release_tag` (ej: `v3.0.0-image1`) y lanzar.
+4. Al finalizar, la Release incluye:
+   - `*.img.xz`
+   - `*.img.xz.sha256`
+
+La imagen ejecuta aprovisionamiento automatico en primer arranque con `VIDLOOP-V3.0.sh`.
+
+Opcional para personalizar antes del primer boot:
+- En particion boot crear `vidloop.env` usando `vidloop.env.example`.
+- Soporta variables como `VIDLOOP_ADMIN_PASS`, `ENABLE_WIREGUARD`, `VIDLOOP_WG_CONFIG_B64`.
+
 El script **detecta automáticamente** si hay una instalación existente y aplica solo las optimizaciones necesarias.
 
 ---
