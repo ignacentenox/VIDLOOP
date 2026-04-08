@@ -30,11 +30,25 @@ Este repositorio ya incluye:
 
 1. Flashear Raspberry Pi OS **Lite Legacy (armhf)** en la SD.
 2. Arrancar la Raspberry con internet.
-3. Ejecutar:
+3. Copiar la carpeta `VIDLOOP` a la Raspberry (pendrive, SCP o descarga ZIP).
+4. Ejecutar:
+
+### Opción A: con git disponible
 
 ```bash
 git clone https://github.com/ignacentenox/VIDLOOP.git
 cd VIDLOOP
+chmod +x VIDLOOP-V3.0.sh
+sudo ./VIDLOOP-V3.0.sh
+```
+
+### Opción B: sin git (recomendada para tu caso)
+
+```bash
+cd ~
+curl -fL https://github.com/ignacentenox/VIDLOOP/archive/refs/heads/main.zip -o VIDLOOP.zip
+unzip -q VIDLOOP.zip
+cd VIDLOOP-main
 chmod +x VIDLOOP-V3.0.sh
 sudo ./VIDLOOP-V3.0.sh
 ```
@@ -47,8 +61,9 @@ El instalador V3 está en modo no interactivo por defecto y deja el equipo opera
 - instala dependencias base
 - instala `pi_video_looper` si no está presente
 - instala `pi_video_looper` con opción `no_hello_video` por defecto
+- si `git` no existe, descarga e instala `pi_video_looper` por ZIP automáticamente
 - aplica `video_looper.ini` en `/opt/video_looper/video_looper.ini`
-- ajusta ruta de videos a `/home/admin/VIDLOOP44`
+- ajusta ruta de videos a `/home/vidloop/VIDLOOP44`
 - habilita y reinicia `video_looper`
 - aplica override `systemd` para recuperación automática del servicio
 - configura HDMI básico y keepalive (si `tvservice` está disponible)
@@ -74,7 +89,6 @@ En VIDLOOP V3 eso ya está contemplado:
 ## Variables de entorno útiles
 
 ### Flujo general
-- `VIDLOOP_ADMIN_PASS=TuClave` fija password de `admin`.
 - `VIDLOOP_AUTO_REBOOT=false` evita reinicio al final.
 - `VIDLOOP_FULL_UPGRADE=false` omite full-upgrade.
 - `VIDLOOP_AGGRESSIVE_TUNING=true` activa perfil agresivo de tuning.
@@ -171,10 +185,12 @@ La imagen generada ejecuta autoprovisioning en el primer arranque usando `VIDLOO
 
 ## Notas operativas
 
-- Carpeta de videos operativa: `/home/admin/VIDLOOP44`
+- Usuario SSH por defecto: `vidloop`
+- Password SSH por defecto: `4455`
+- Carpeta de videos operativa: `/home/vidloop/VIDLOOP44`
 - Servicio principal: `video_looper`
 - Keepalive HDMI: `hdmi-keepalive` (si aplica en la imagen/stack)
-- En modo no interactivo, la credencial generada de `admin` queda en `/root/.vidloop/admin_credentials.txt`
+- Credenciales y metadatos locales: `/root/.vidloop/admin_credentials.txt`
 
 ## Licencia
 
