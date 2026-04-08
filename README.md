@@ -122,6 +122,32 @@ Variables opcionales:
 - `VIDLOOP_FULL_UPGRADE=false` para omitir full-upgrade
 - `VIDLOOP_AGGRESSIVE_TUNING=true` para perfil agresivo
 
+### VPN WireGuard (opcional)
+
+El instalador V3 ahora puede configurar WireGuard automaticamente para que el dashboard opere sobre VPN.
+
+Variables de entorno:
+- `ENABLE_WIREGUARD=true` habilita instalacion/configuracion
+- `VIDLOOP_WG_INTERFACE=wg0` nombre de interfaz (default: `wg0`)
+- `VIDLOOP_WG_CONFIG_B64=...` contenido de `wg0.conf` en base64
+- `VIDLOOP_WG_CONFIG_TEXT='[Interface] ...'` contenido plano del config
+- `VIDLOOP_WG_CONFIG_FILE=/ruta/wg0.conf` ruta local al archivo de config
+
+Ejemplo:
+
+```bash
+WG_B64="$(base64 -w0 wg0.conf 2>/dev/null || base64 < wg0.conf | tr -d '\n')"
+sudo ENABLE_WIREGUARD=true VIDLOOP_WG_CONFIG_B64="$WG_B64" ./VIDLOOP-V3.0.sh
+```
+
+### Control remoto desde Dashboard
+
+Para los botones que ya tenes en dashboard:
+- Reiniciar RPi: `sudo reboot`
+- Reiniciar video looper: `sudo systemctl restart video_looper`
+
+El V3 aplica un override de `systemd` para `video_looper` con `Restart=always`, mejorando recuperacion ante cuelgues.
+
 El script **detecta automáticamente** si hay una instalación existente y aplica solo las optimizaciones necesarias.
 
 ---

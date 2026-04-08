@@ -74,6 +74,8 @@ require_cmd git
 require_cmd tr
 require_cmd head
 
+WG_INTERFACE="${VIDLOOP_WG_INTERFACE:-wg0}"
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 CURRENT_USER=$(whoami)
@@ -134,6 +136,17 @@ fi
 
 sudo systemctl enable video_looper 2>/dev/null || true
 sudo systemctl restart video_looper 2>/dev/null || true
+
+# Hace mas robusto el reinicio del servicio ante cuelgues.
+sudo mkdir -p /etc/systemd/system/video_looper.service.d
+sudo tee /etc/systemd/system/video_looper.service.d/override.conf >/dev/null <<'EOF'
+[Service]
+Restart=always
+RestartSec=2
+StartLimitIntervalSec=0
+EOF
+sudo systemctl daemon-reload
+sudo systemctl restart video_looper 2>/dev/null || true
 log_ok "pi_video_looper listo"
 
 if is_true "$IS_RPI"; then
@@ -184,6 +197,34 @@ if sudo apt install -y zerotier-one; then
 else
     log_warn "No se pudo instalar zerotier-one desde APT."
     log_warn "Instalalo manualmente con un metodo firmado por tu organizacion."
+fi
+
+log_info "Configurando WireGuard (opcional)..."
+if is_true "${ENABLE_WIREGUARD:-false}"; then
+    sudo apt install -y wireguard wireguard-tools resolvconf || {
+        log_error "No se pudo instalar WireGuard"
+        exit 1
+    }
+
+    WG_PATH="/etc/wireguard/${WG_INTERFACE}.conf"
+    if [ -n "${VIDLOOP_WG_CONFIG_B64:-}" ]; then
+        echo "$VIDLOOP_WG_CONFIG_B64" | base64 -d | sudo tee "$WG_PATH" >/dev/null
+    elif [ -n "${VIDLOOP_WG_CONFIG_TEXT:-}" ]; then
+        printf '%s\n' "$VIDLOOP_WG_CONFIG_TEXT" | sudo tee "$WG_PATH" >/dev/null
+    elif [ -n "${VIDLOOP_WG_CONFIG_FILE:-}" ] && [ -f "${VIDLOOP_WG_CONFIG_FILE}" ]; then
+        sudo install -m 0600 "${VIDLOOP_WG_CONFIG_FILE}" "$WG_PATH"
+    else
+        log_warn "ENABLE_WIREGUARD=true pero no se recibio config (VIDLOOP_WG_CONFIG_B64/TEXT/FILE)."
+        log_warn "Se instala WireGuard pero no se levanta interfaz."
+    fi
+
+    if [ -f "$WG_PATH" ]; then
+        sudo chmod 600 "$WG_PATH"
+        sudo systemctl enable --now "wg-quick@${WG_INTERFACE}"
+        log_ok "WireGuard activo en interfaz ${WG_INTERFACE}"
+    fi
+else
+    log_info "WireGuard desactivado (ENABLE_WIREGUARD=false)"
 fi
 
 log_info "Configurando usuario admin..."
