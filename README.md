@@ -98,6 +98,30 @@ chmod +x vidloop-definitivo.sh
 sudo ./vidloop-definitivo.sh
 ```
 
+### Instalacion one-shot (sin preguntas)
+
+Para tu caso (instalar Raspberry Pi OS y ejecutar un solo script), `VIDLOOP-V3.0.sh` ahora corre en modo no interactivo por defecto:
+
+```bash
+chmod +x VIDLOOP-V3.0.sh
+sudo ./VIDLOOP-V3.0.sh
+```
+
+Comportamiento por defecto del V3:
+- ejecuta `apt update` + `apt full-upgrade`
+- instala y configura `pi_video_looper`
+- aplica `video_looper.ini` del repo
+- crea `/home/admin/VIDLOOP44`
+- configura HDMI + keepalive (si `tvservice` esta disponible)
+- genera clave de `admin` automaticamente si no definis `VIDLOOP_ADMIN_PASS`
+- reinicia automaticamente al finalizar
+
+Variables opcionales:
+- `VIDLOOP_ADMIN_PASS=TuClave` para fijar password de `admin`
+- `VIDLOOP_AUTO_REBOOT=false` para evitar reinicio automatico
+- `VIDLOOP_FULL_UPGRADE=false` para omitir full-upgrade
+- `VIDLOOP_AGGRESSIVE_TUNING=true` para perfil agresivo
+
 El script **detecta automáticamente** si hay una instalación existente y aplica solo las optimizaciones necesarias.
 
 ---

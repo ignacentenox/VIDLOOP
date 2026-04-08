@@ -15,6 +15,24 @@ log_ok()    { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+VIDLOOP_NONINTERACTIVE="${VIDLOOP_NONINTERACTIVE:-true}"
+VIDLOOP_AUTO_REBOOT="${VIDLOOP_AUTO_REBOOT:-true}"
+
+is_true() {
+    case "${1:-}" in
+        1|true|TRUE|yes|YES|y|Y) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+generate_password() {
+    if command -v openssl >/dev/null 2>&1; then
+        openssl rand -base64 18 | tr -d '\n' | tr '/+' 'XY' | cut -c1-20
+        return
+    fi
+    tr -dc 'A-Za-z0-9' </dev/urandom | head -c 20
+}
+
 require_cmd() {
     if ! command -v "$1" >/dev/null 2>&1; then
         log_error "Falta el comando requerido: $1"
@@ -44,13 +62,6 @@ append_once() {
     fi
 }
 
-is_true() {
-    case "${1:-}" in
-        1|true|TRUE|yes|YES|y|Y) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 echo -e "${BLUE}================================================${NC}"
 echo -e "${BLUE}               VIDLOOP V3.0                    ${NC}"
 echo -e "${BLUE}        Setup seguro + idempotente             ${NC}"
@@ -60,6 +71,8 @@ require_cmd sudo
 require_cmd awk
 require_cmd sed
 require_cmd git
+require_cmd tr
+require_cmd head
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -89,6 +102,7 @@ fi
 log_ok "Indice de paquetes actualizado"
 
 log_info "Instalando dependencias base..."
+export DEBIAN_FRONTEND=noninteractive
 sudo apt install -y \
     htop \
     iotop \
@@ -178,24 +192,39 @@ if ! id -u admin >/dev/null 2>&1; then
     sudo usermod -aG sudo admin
 fi
 
-while true; do
-    read -rsp "Ingresa nueva clave para usuario admin: " ADMIN_PASS
-    echo
-    read -rsp "Confirma clave para usuario admin: " ADMIN_PASS_CONFIRM
-    echo
-    if [ -z "$ADMIN_PASS" ]; then
-        log_warn "La clave no puede estar vacia"
-        continue
+ADMIN_PASS="${VIDLOOP_ADMIN_PASS:-}"
+if [ -z "$ADMIN_PASS" ]; then
+    if is_true "$VIDLOOP_NONINTERACTIVE"; then
+        ADMIN_PASS="$(generate_password)"
+        log_warn "VIDLOOP_ADMIN_PASS no definido: se genero una clave automatica para admin"
+    else
+        while true; do
+            read -rsp "Ingresa nueva clave para usuario admin: " ADMIN_PASS
+            echo
+            read -rsp "Confirma clave para usuario admin: " ADMIN_PASS_CONFIRM
+            echo
+            if [ -z "$ADMIN_PASS" ]; then
+                log_warn "La clave no puede estar vacia"
+                continue
+            fi
+            if [ "$ADMIN_PASS" != "$ADMIN_PASS_CONFIRM" ]; then
+                log_warn "Las claves no coinciden, intenta de nuevo"
+                continue
+            fi
+            break
+        done
+        unset ADMIN_PASS_CONFIRM
     fi
-    if [ "$ADMIN_PASS" != "$ADMIN_PASS_CONFIRM" ]; then
-        log_warn "Las claves no coinciden, intenta de nuevo"
-        continue
-    fi
-    break
-done
+fi
 
 echo "admin:${ADMIN_PASS}" | sudo chpasswd
-unset ADMIN_PASS ADMIN_PASS_CONFIRM
+if is_true "$VIDLOOP_NONINTERACTIVE"; then
+    sudo install -d -m 0700 /root/.vidloop
+    printf 'admin_password=%s\ncreated_at=%s\n' "$ADMIN_PASS" "$(date -Iseconds)" | sudo tee /root/.vidloop/admin_credentials.txt >/dev/null
+    sudo chmod 600 /root/.vidloop/admin_credentials.txt
+    log_info "Credenciales guardadas en /root/.vidloop/admin_credentials.txt"
+fi
+unset ADMIN_PASS
 log_ok "Usuario admin configurado"
 
 VIDEO_DIR="/home/admin/VIDLOOP44"
@@ -277,10 +306,10 @@ echo -e "${YELLOW}Usuario SSH:${NC} admin"
 echo -e "${YELLOW}Carpeta videos:${NC} /home/admin/VIDLOOP44"
 echo -e "${YELLOW}Nota:${NC} PasswordAuthentication por defecto queda en NO"
 
-echo
-read -rp "Reiniciar ahora? (y/n): " R
-if [[ "$R" =~ ^[Yy]$ ]]; then
+if is_true "$VIDLOOP_AUTO_REBOOT"; then
+    log_info "Reinicio automatico habilitado (VIDLOOP_AUTO_REBOOT=true)"
+    sleep 3
     sudo reboot
 else
-    log_info "Reinicia manualmente cuando quieras: sudo reboot"
+    log_info "VIDLOOP_AUTO_REBOOT=false, reinicia manualmente: sudo reboot"
 fi
