@@ -1,6 +1,6 @@
 # VIDLOOP - Guia Tecnica Interna
 
-Esta guia documenta el uso operativo de scripts auxiliares de WireGuard usados en el entorno VIDLOOP para provisionar Raspberry Pi, registrar peers en el VPS y migrar la operacion a IPs VPN.
+Esta guia documenta el uso operativo de scripts auxiliares de WireGuard usados en el entorno VIDLOOP para provisionar Raspberry Pi y registrar peers en el VPS.
 
 No forma parte del README principal porque el repo publico debe mantener foco en el instalador base.
 
@@ -10,7 +10,8 @@ Importante:
 
 - el instalador base de este repo soporta WireGuard por variables de entorno
 - los scripts auxiliares documentados aca son herramientas operativas complementarias
-- esos scripts pueden vivir en un repo de dashboard, en un repo de ops o distribuirse aparte segun tu despliegue
+- el dashboard VIDLOOP-DASH es otro repositorio distinto
+- estos scripts pueden vivir en un repo de dashboard, en un repo de ops o distribuirse aparte segun tu despliegue
 
 Scripts documentados:
 
@@ -149,7 +150,7 @@ python switch_devices_to_vpn.py --db data/vidloop_dash.db --mapping-file devices
 python switch_devices_to_vpn.py --db data/vidloop_dash.db --mapping-file devices_vpn.example.json
 ```
 
-Sirve para migrar los dispositivos del dashboard a sus IPs VPN una vez que la red privada ya responde correctamente.
+Sirve para migrar los dispositivos del dashboard a sus IPs VPN una vez que la red privada ya responde correctamente. Ese flujo pertenece al repo del dashboard, no a este instalador.
 
 ## Relacion con VIDLOOP V3
 

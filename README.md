@@ -115,6 +115,8 @@ sudo ENABLE_WIREGUARD=true VIDLOOP_WG_CONFIG_B64="$WG_B64" ./VIDLOOP-V3.0.sh
 
 VIDLOOP V3 puede quedar conectado por WireGuard durante la instalacion si se le inyecta un `wg0.conf` valido con las variables anteriores.
 
+Este repositorio corresponde al instalador de cada Raspberry. La capa de dashboard y gestion central vive en otro proyecto.
+
 Flujo minimo recomendado:
 
 1. Preparar o generar la configuracion `wg0.conf` del cliente.
@@ -122,7 +124,7 @@ Flujo minimo recomendado:
 3. Dar de alta el peer correspondiente en el servidor VPN.
 4. Verificar conectividad con `wg show` y `ping` dentro de la red privada.
 
-Este README publico deja solo el flujo esencial. La operacion tecnica detallada de provision, alta de peers y migracion hacia dashboard queda fuera del README principal.
+Este README publico deja solo el flujo esencial. La operacion tecnica detallada de provision y alta de peers queda fuera del README principal.
 
 ## Control remoto desde dashboard
 
