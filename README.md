@@ -111,6 +111,19 @@ WG_B64="$(base64 -w0 wg0.conf 2>/dev/null || base64 < wg0.conf | tr -d '\n')"
 sudo ENABLE_WIREGUARD=true VIDLOOP_WG_CONFIG_B64="$WG_B64" ./VIDLOOP-V3.0.sh
 ```
 
+## VPN operativa minima
+
+VIDLOOP V3 puede quedar conectado por WireGuard durante la instalacion si se le inyecta un `wg0.conf` valido con las variables anteriores.
+
+Flujo minimo recomendado:
+
+1. Preparar o generar la configuracion `wg0.conf` del cliente.
+2. Instalar VIDLOOP con `ENABLE_WIREGUARD=true` y una de las variables `VIDLOOP_WG_CONFIG_*`.
+3. Dar de alta el peer correspondiente en el servidor VPN.
+4. Verificar conectividad con `wg show` y `ping` dentro de la red privada.
+
+Este README publico deja solo el flujo esencial. La operacion tecnica detallada de provision, alta de peers y migracion hacia dashboard queda fuera del README principal.
+
 ## Control remoto desde dashboard
 
 Comandos recomendados para tus botones:
