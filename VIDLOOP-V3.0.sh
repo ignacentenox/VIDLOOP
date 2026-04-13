@@ -229,13 +229,34 @@ while [ $APT_ATTEMPT -le 3 ]; do
         APT_ATTEMPT=$((APT_ATTEMPT + 1))
     fi
 done
+
+# Detectar y reparar dependencias rotas antes de full-upgrade
+log_info "Verificando integridad de dependencias..."
+if ! sudo apt-get check 2>/dev/null; then
+    log_warn "Se detectaron dependencias rotas, intentando reparar..."
+    if sudo apt-get install -f -y 2>/dev/null; then
+        log_ok "Dependencias reparadas con 'apt install -f'"
+    elif sudo apt --fix-broken install -y 2>/dev/null; then
+        log_ok "Dependencias reparadas con 'apt --fix-broken install'"
+    else
+        log_warn "No se pudieron reparar las dependencias automáticamente"
+        log_warn "Continuando con instalación, pero algunos paquetes pueden no instalarse"
+    fi
+else
+    log_ok "Sistema de paquetes íntegro"
+fi
+
 if is_true "${VIDLOOP_FULL_UPGRADE:-true}"; then
     log_info "Aplicando full-upgrade (puede tardar)..."
-    sudo apt-get full-upgrade -y
+    if sudo apt-get full-upgrade -y 2>&1; then
+        log_ok "full-upgrade completado"
+    else
+        log_warn "full-upgrade falló, continuando con instalación base"
+    fi
 else
     log_warn "VIDLOOP_FULL_UPGRADE=false: se omite full-upgrade"
 fi
-log_ok "Indice de paquetes actualizado"
+log_ok "Índice de paquetes actualizado"
 
 log_info "Instalando dependencias base..."
 sudo apt-get install -y \
