@@ -511,6 +511,37 @@ if is_true "${ENABLE_WIREGUARD:-true}"; then
     fi
 
     WG_PATH="/etc/wireguard/${WG_INTERFACE}.conf"
+    
+    # ================================================================
+    # MASTER SETUP: Descargar automáticamente si está disponible en VPS
+    # ================================================================
+    if [ -n "${VIDLOOP_DOWNLOAD_WG_FROM_VPS:-}" ] && [ -z "${VIDLOOP_WG_CONFIG_B64:-}" ] \
+       && [ -z "${VIDLOOP_WG_CONFIG_TEXT:-}" ] && [ -z "${VIDLOOP_WG_CONFIG_FILE:-}" ]; then
+        
+        log_info "Intentando descargar configuración WireGuard desde VPS..."
+        
+        VPS_IP="${VIDLOOP_VPS_IP:-82.25.77.55}"
+        VPS_USER="${VIDLOOP_VPS_USER:-root}"
+        VPS_PASS="${VIDLOOP_VPS_PASS:-Vidloop@44tech}"
+        
+        # Validar que tenemos curl o wget
+        if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
+            log_warn "curl/wget no disponible, se omite descarga desde VPS"
+        else
+            # Usar sshpass si está disponible, sino intentar sin contraseña
+            if command -v sshpass >/dev/null 2>&1; then
+                WG_CONF_B64=$(sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" \
+                    'ls -td /tmp/wireguard-* 2>/dev/null | head -1 | xargs -I {} cat {}/wg0.conf | base64 -w0' 2>/dev/null || echo "")
+                
+                if [ -n "$WG_CONF_B64" ]; then
+                    log_ok "Configuración descargada desde VPS"
+                    VIDLOOP_WG_CONFIG_B64="$WG_CONF_B64"
+                fi
+            fi
+        fi
+    fi
+    
+    # Aplicar configuración desde uno de los métodos disponibles
     if [ -n "${VIDLOOP_WG_CONFIG_B64:-}" ]; then
         echo "$VIDLOOP_WG_CONFIG_B64" | base64 -d | sudo tee "$WG_PATH" >/dev/null
     elif [ -n "${VIDLOOP_WG_CONFIG_TEXT:-}" ]; then
@@ -518,7 +549,7 @@ if is_true "${ENABLE_WIREGUARD:-true}"; then
     elif [ -n "${VIDLOOP_WG_CONFIG_FILE:-}" ] && [ -f "${VIDLOOP_WG_CONFIG_FILE}" ]; then
         sudo install -m 0600 "${VIDLOOP_WG_CONFIG_FILE}" "$WG_PATH"
     else
-        log_warn "ENABLE_WIREGUARD=true pero no se recibio config (VIDLOOP_WG_CONFIG_B64/TEXT/FILE)."
+        log_warn "ENABLE_WIREGUARD=true pero no se recibio config (VIDLOOP_WG_CONFIG_B64/TEXT/FILE/DOWNLOAD_FROM_VPS)."
         log_warn "Se instala WireGuard pero no se levanta interfaz."
     fi
 
