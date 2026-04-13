@@ -385,11 +385,30 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable video_looper 2>/dev/null || true
-sudo systemctl start video_looper 2>/dev/null || true
 
-# Reiniciar supervisord para que aplique el ini actualizado
-if command -v supervisorctl >/dev/null 2>&1; then
-    sudo supervisorctl restart video_looper 2>/dev/null || true
+# Activación robusta de video_looper con reintentos automáticos
+log_info "Activando video_looper con validación de reintentos..."
+VIDEO_LOOPER_START_ATTEMPTS=1
+while [ $VIDEO_LOOPER_START_ATTEMPTS -le 3 ]; do
+    if sudo systemctl start video_looper 2>/dev/null; then
+        sleep 2
+        if sudo systemctl is-active --quiet video_looper 2>/dev/null; then
+            log_ok "video_looper activo en intento $VIDEO_LOOPER_START_ATTEMPTS"
+            break
+        fi
+    fi
+    if [ $VIDEO_LOOPER_START_ATTEMPTS -lt 3 ]; then
+        log_warn "Intento $VIDEO_LOOPER_START_ATTEMPTS falló, reintentando en 2 segundos..."
+        sleep 2
+    fi
+    VIDEO_LOOPER_START_ATTEMPTS=$((VIDEO_LOOPER_START_ATTEMPTS + 1))
+done
+
+if ! sudo systemctl is-active --quiet video_looper 2>/dev/null; then
+    log_warn "No se pudo activar video_looper via systemd, intentando supervisorctl..."
+    if command -v supervisorctl >/dev/null 2>&1; then
+        sudo supervisorctl restart video_looper 2>/dev/null || true
+    fi
 fi
 log_ok "pi_video_looper listo"
 
@@ -452,8 +471,8 @@ if command -v zerotier-one >/dev/null 2>&1; then
     log_ok "ZeroTier activo"
 fi
 
-log_info "Configurando WireGuard (opcional)..."
-if is_true "${ENABLE_WIREGUARD:-false}"; then
+log_info "Configurando WireGuard (optimizado)..."
+if is_true "${ENABLE_WIREGUARD:-true}"; then
     sudo apt-get install -y wireguard wireguard-tools resolvconf || {
         log_error "No se pudo instalar WireGuard"
         exit 1
@@ -494,6 +513,12 @@ else
     fi
 fi
 
+# Agregar usuario 'pi' al grupo vidloop si existe (compatibilidad con instalaciones existentes)
+if id -u pi >/dev/null 2>&1; then
+    sudo usermod -aG "${VIDLOOP_SYSTEM_USER}" pi 2>/dev/null || true
+    log_info "Usuario 'pi' agregado al grupo $VIDLOOP_SYSTEM_USER"
+fi
+
 ADMIN_PASS="$VIDLOOP_SYSTEM_PASS"
 if [ -z "$ADMIN_PASS" ]; then
     if is_true "$VIDLOOP_NONINTERACTIVE"; then
@@ -532,7 +557,10 @@ log_ok "Usuario ${VIDLOOP_SYSTEM_USER} configurado"
 VIDEO_DIR="/home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
 sudo mkdir -p "$VIDEO_DIR"
 sudo chown -R "${VIDLOOP_SYSTEM_USER}:${VIDLOOP_SYSTEM_USER}" "$VIDEO_DIR"
-log_ok "Carpeta de videos lista en $VIDEO_DIR"
+# Permisos 775 para que el grupo vidloop pueda escribir (crítico para operación remota)
+sudo chmod 755 "$VIDEO_DIR"
+sudo chmod g+w "$VIDEO_DIR"
+log_ok "Carpeta de videos lista en $VIDEO_DIR (permisos 775 aplicados)"
 
 if is_true "$VIDLOOP_ENABLE_MEDIA_NORMALIZER"; then
         if ! [[ "$VIDLOOP_IMAGE_DURATION_SEC" =~ ^[0-9]+$ ]] || [ "$VIDLOOP_IMAGE_DURATION_SEC" -lt 1 ]; then
@@ -762,6 +790,71 @@ else
     log_warn "tvservice no disponible: se omite servicio HDMI keepalive"
 fi
 
+# ================================================================
+# VALIDACIÓN POST-INSTALACIÓN
+# ================================================================
+echo
+log_info "Ejecutando validación post-instalación..."
+echo
+log_info "Estado de servicios críticos:"
+
+# Verificar video_looper
+if sudo systemctl is-active --quiet video_looper 2>/dev/null; then
+    log_ok "✓ video_looper está ACTIVO"
+else
+    log_warn "✗ video_looper está INACTIVO o indisponible"
+fi
+
+# Verificar permisos VIDLOOP44
+VIDLOOP44_PATH="/home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
+if [ -d "$VIDLOOP44_PATH" ]; then
+    PERMS=$(stat -c '%a' "$VIDLOOP44_PATH" 2>/dev/null || stat -f '%OLp' "$VIDLOOP44_PATH" | tail -c 4)
+    log_ok "✓ Carpeta VIDLOOP44 existe con permisos $PERMS"
+else
+    log_warn "✗ Carpeta VIDLOOP44 no existe"
+fi
+
+# Verificar grupo vidloop
+if getent group "${VIDLOOP_SYSTEM_USER}" >/dev/null 2>&1; then
+    log_ok "✓ Grupo $VIDLOOP_SYSTEM_USER existe"
+else
+    log_warn "✗ Grupo $VIDLOOP_SYSTEM_USER no existe"
+fi
+
+# Verificar usuario pi en grupo vidloop
+if id pi >/dev/null 2>&1 && id -Gn pi | grep -q "${VIDLOOP_SYSTEM_USER}"; then
+    log_ok "✓ Usuario 'pi' pertenece al grupo $VIDLOOP_SYSTEM_USER"
+elif id pi >/dev/null 2>&1; then
+    log_warn "⚠ Usuario 'pi' existe pero NO pertenece a grupo $VIDLOOP_SYSTEM_USER"
+fi
+
+# Verificar SSH
+if sudo systemctl is-active --quiet ssh 2>/dev/null || sudo systemctl is-active --quiet sshd 2>/dev/null; then
+    log_ok "✓ SSH está ACTIVO"
+else
+    log_warn "✗ SSH está INACTIVO"
+fi
+
+# Verificar WireGuard si está habilitado
+if is_true "${ENABLE_WIREGUARD:-true}"; then
+    if ip link show "${WG_INTERFACE}" >/dev/null 2>&1; then
+        log_ok "✓ WireGuard interfaz ${WG_INTERFACE} está ACTIVA"
+    else
+        log_warn "⚠ WireGuard interfaz ${WG_INTERFACE} no está activa (config pendiente)"
+    fi
+fi
+
+# Verificar ZeroTier
+if command -v zerotier-one >/dev/null 2>&1; then
+    if sudo systemctl is-active --quiet zerotier-one 2>/dev/null; then
+        log_ok "✓ ZeroTier está ACTIVO"
+    else
+        log_warn "⚠ ZeroTier instalado pero NO activo"
+    fi
+fi
+
+echo
+log_ok "Validación post-instalación completada"
 echo
 echo -e "${GREEN}==============================================${NC}"
 echo -e "${GREEN}     VIDLOOP V3.0 - SETUP COMPLETADO          ${NC}"
