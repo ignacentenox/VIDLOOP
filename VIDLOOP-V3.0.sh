@@ -473,10 +473,21 @@ fi
 
 log_info "Configurando WireGuard (optimizado)..."
 if is_true "${ENABLE_WIREGUARD:-true}"; then
-    sudo apt-get install -y wireguard wireguard-tools resolvconf || {
-        log_error "No se pudo instalar WireGuard"
+    # Instalar wireguard y herramientas (sin resolvconf que conflicta con systemd en Buster)
+    log_info "Instalando WireGuard y dependencias..."
+    
+    if sudo apt-get install -y wireguard wireguard-tools 2>/dev/null; then
+        log_ok "WireGuard instalado"
+    else
+        log_error "No se pudo instalar WireGuard (wireguard y wireguard-tools)"
         exit 1
-    }
+    fi
+    
+    # openresolv es compatible con systemd (no desinstala paquetes críticos)
+    # Se intenta instalar pero no es obligatorio si ya existe otra solución DNS
+    if ! command -v resolvectl >/dev/null 2>&1; then
+        sudo apt-get install -y openresolv 2>/dev/null || log_warn "openresolv no disponible, se omite"
+    fi
 
     WG_PATH="/etc/wireguard/${WG_INTERFACE}.conf"
     if [ -n "${VIDLOOP_WG_CONFIG_B64:-}" ]; then
