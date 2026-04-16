@@ -321,17 +321,72 @@ deploy_rpi() {
         echo "════════════════════════════════════════"
 
         # ── 1. Test de conectividad SSH ─────────────────────────
-        echo "[1/5] Verificando conexión SSH a $host..."
+        echo "[1/6] Verificando conexión SSH a $host..."
         if ! _ssh "$user" "$host" "$pass" "$port" "echo OK" &>/dev/null; then
             echo "ERROR: No se puede conectar a $host:$port (user=$user)"
             return 1
         fi
         echo "      → SSH OK"
 
+        # ── 1b. Individualizar RPi (idempotente, seguro para clones) ──
+        # Regenera hostname, SSH host keys y machine-id únicos.
+        # Es NO-OP si la RPi ya fue instalada con el nombre correcto.
+        echo "      Individualizando RPi (hostname / SSH keys / machine-id)..."
+        _ssh "$user" "$host" "$pass" "$port" bash -s -- "$name" <<'INDIVIDUALIZE'
+#!/usr/bin/env bash
+set -euo pipefail
+NEW_HOSTNAME="$1"
+
+# Hostname
+CURRENT=$(hostname -s 2>/dev/null || cat /etc/hostname | tr -d '\n')
+if [ "$CURRENT" != "$NEW_HOSTNAME" ]; then
+    echo "$NEW_HOSTNAME" | sudo tee /etc/hostname >/dev/null
+    sudo sed -i "s/127\.0\.1\.1.*/127.0.1.1\t${NEW_HOSTNAME}/g" /etc/hosts
+    sudo hostnamectl set-hostname "$NEW_HOSTNAME" 2>/dev/null || true
+    echo "  hostname: $CURRENT → $NEW_HOSTNAME"
+fi
+
+# SSH host keys (regenerar si son clones — mismo fingerprint detectado)
+KEYS_UNIQUE=true
+if sudo test -f /etc/ssh/ssh_host_rsa_key; then
+    KEY_FP=$(sudo ssh-keygen -lf /etc/ssh/ssh_host_rsa_key 2>/dev/null | awk '{print $2}' || echo "")
+    # Si el fingerprint está en el archivo de clones conocidas, regenerar
+    if [ -f /etc/ssh/.vidloop_clone_key ] && \
+       [ "$(cat /etc/ssh/.vidloop_clone_key)" = "$KEY_FP" ]; then
+        KEYS_UNIQUE=false
+    fi
+    # Guardar fingerprint actual para detectar futuros clones
+    echo "$KEY_FP" | sudo tee /etc/ssh/.vidloop_clone_key >/dev/null
+fi
+
+if [ "$KEYS_UNIQUE" = false ] || \
+   [ "$(sudo find /etc/ssh -name 'ssh_host_*' | wc -l)" -eq 0 ]; then
+    sudo rm -f /etc/ssh/ssh_host_*
+    sudo dpkg-reconfigure -f noninteractive openssh-server 2>/dev/null || \
+    sudo ssh-keygen -A 2>/dev/null || true
+    sudo systemctl restart ssh 2>/dev/null || sudo systemctl restart sshd 2>/dev/null || true
+    echo "  SSH host keys regeneradas"
+fi
+
+# Machine ID
+if sudo test -f /etc/machine-id; then
+    MID=$(cat /etc/machine-id)
+    # Si el machine-id tiene menos de 32 chars o es el default de Buster, regenerar
+    if [ ${#MID} -lt 32 ] || [ "$MID" = "b08dfa6083e7567a1921a715000001fb" ]; then
+        sudo rm -f /etc/machine-id /var/lib/dbus/machine-id
+        sudo systemd-machine-id-setup 2>/dev/null || true
+        echo "  machine-id regenerado"
+    fi
+fi
+
+echo "  Individualización OK"
+INDIVIDUALIZE
+        echo "      → Individualización OK"
+
         # ── 2. Generar config WireGuard en VPS ─────────────────
         local wg_config_b64=""
         if [[ "$SKIP_WG" != "true" ]] && [[ -n "$wg_ip" ]]; then
-            echo "[2/5] Generando config WireGuard en VPS para $name ($wg_ip)..."
+            echo "[2/6] Generando config WireGuard en VPS para $name ($wg_ip)..."
             local vps_output
             vps_output=$(generate_wg_config_on_vps "$name" "$wg_ip" 2>&1) || {
                 echo "WARN: Fallo de generación WireGuard en VPS: $vps_output"
@@ -344,11 +399,11 @@ deploy_rpi() {
                 echo "WARN: No se obtuvo config WireGuard del VPS"
             fi
         else
-            echo "[2/5] WireGuard omitido (SKIP_WG=true o sin WG_IP asignada)"
+            echo "[2/6] WireGuard omitido (SKIP_WG=true o sin WG_IP asignada)"
         fi
 
         # ── 3. Subir archivos a la RPi ──────────────────────────
-        echo "[3/5] Subiendo VIDLOOP-V3.0.sh a $host..."
+        echo "[3/6] Subiendo VIDLOOP-V3.0.sh a $host..."
         local remote_dir="/tmp/vidloop_deploy_$$"
         _ssh "$user" "$host" "$pass" "$port" "mkdir -p $remote_dir" || {
             echo "ERROR: No se pudo crear directorio remoto"
@@ -364,7 +419,7 @@ deploy_rpi() {
         echo "      → Archivos subidos OK"
 
         # ── 4. Ejecutar instalador en RPi ───────────────────────
-        echo "[4/5] Ejecutando instalador en $host..."
+        echo "[4/6] Ejecutando instalador en $host..."
         local env_vars="VIDLOOP_NONINTERACTIVE=true VIDLOOP_AUTO_REBOOT=false"
         if [ -n "$wg_config_b64" ]; then
             env_vars="$env_vars VIDLOOP_WG_CONFIG_B64=$wg_config_b64 ENABLE_WIREGUARD=true"
@@ -385,15 +440,20 @@ deploy_rpi() {
         echo "      → Instalación completada"
 
         # ── 5. Limpieza y validación post-deploy ────────────────
-        echo "[5/5] Limpieza y validación en $host..."
+        echo "[5/6] Limpieza y validación en $host..."
         _ssh "$user" "$host" "$pass" "$port" "rm -rf $remote_dir" 2>/dev/null || true
 
-        # Validación rápida: verificar que SSH sigue activo (RPi no reinició aún)
+        # Validación rápida
         if _ssh "$user" "$host" "$pass" "$port" "id" &>/dev/null; then
             echo "      → RPi responde post-instalación OK"
         else
             echo "      → RPi no responde (puede estar reiniciando — normal)"
         fi
+
+        # ── 6. Reboot final ──────────────────────────────────────
+        echo "[6/6] Reiniciando RPi para aplicar todos los cambios..."
+        _ssh "$user" "$host" "$pass" "$port" "sudo reboot" 2>/dev/null || true
+        echo "      → Reboot enviado"
 
         echo
         echo "RESULTADO: ÉXITO — $name ($host)"
