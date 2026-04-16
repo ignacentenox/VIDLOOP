@@ -125,6 +125,8 @@ configure_buster_archive_sources_trusted() {
     sudo tee /etc/apt/sources.list.d/vidloop-buster-archive.list >/dev/null <<'EOF'
 deb [trusted=yes] http://archive.debian.org/debian buster main contrib non-free
 deb [trusted=yes] http://archive.debian.org/debian buster-backports main
+deb [trusted=yes] http://archive.raspberrypi.org/debian/ buster main
+deb [trusted=yes] http://raspbian.raspberrypi.org/raspbian/ buster main contrib non-free rpi
 EOF
 
     sudo mkdir -p /etc/apt/apt.conf.d
@@ -313,11 +315,16 @@ ensure_cmd_or_install "supervisorctl" "supervisor" || {
 
 log_info "Instalando/validando pi_video_looper..."
 # pi_video_looper usa supervisor (NO systemd). Verificamos via supervisorctl.
+# NOTA: supervisorctl status devuelve 'video_looper: ERROR (no such process)' si no existe
+#       — el texto 'video_looper' aparece igual, por eso verificamos RUNNING + conf file.
 VIDEO_LOOPER_INSTALLED=false
-if command -v supervisorctl >/dev/null 2>&1 && sudo supervisorctl status video_looper 2>/dev/null | grep -q 'video_looper'; then
+if [ -f /etc/supervisor/conf.d/video_looper.conf ] && \
+   command -v supervisorctl >/dev/null 2>&1 && \
+   sudo supervisorctl status video_looper 2>/dev/null | grep -q 'RUNNING'; then
     VIDEO_LOOPER_INSTALLED=true
-    log_info "Servicio video_looper ya existe en supervisor, se conserva instalacion"
-elif sudo systemctl list-unit-files 2>/dev/null | grep -q '^video_looper\.service'; then
+    log_info "Servicio video_looper ya existe en supervisor (RUNNING), se conserva instalacion"
+elif sudo systemctl list-unit-files 2>/dev/null | grep -q '^video_looper\.service' && \
+     [ -f /etc/supervisor/conf.d/video_looper.conf ]; then
     VIDEO_LOOPER_INSTALLED=true
     log_info "Servicio video_looper ya existe en systemd, se conserva instalacion"
 fi
@@ -350,6 +357,38 @@ if [ "$VIDEO_LOOPER_INSTALLED" = "false" ]; then
         sudo bash "$TMP_LOOPER_DIR/install.sh" no_hello_video
     else
         sudo bash "$TMP_LOOPER_DIR/install.sh"
+    fi
+
+    # Instalar omxplayer explícitamente (install.sh a veces no lo incluye en Buster)
+    if ! command -v omxplayer >/dev/null 2>&1; then
+        log_info "Instalando omxplayer..."
+        sudo apt-get install -y omxplayer 2>/dev/null || \
+            sudo apt-get install -y --no-install-recommends omxplayer || \
+            log_warn "omxplayer no pudo instalarse – verificar manualmente"
+    fi
+
+    # Fix pygame: install.sh puede fallar por gcc-8-base version conflict en Buster+RPi.
+    # Si python3-pygame no importa, forzar install con dpkg --force-depends y marcarlo hold.
+    if ! python3 -c "import pygame" >/dev/null 2>&1; then
+        log_warn "python3-pygame no disponible, aplicando install forzado..."
+        # Instalar las dependencias SDL reales que pygame sí necesita en runtime
+        sudo apt-get install -y --no-install-recommends \
+            libsdl1.2debian libsdl-image1.2 libsdl-mixer1.2 libsdl-ttf2.0-0 \
+            libportmidi0 libfreetype6 libjpeg62-turbo fonts-freefont-ttf 2>/dev/null || true
+        # Descargar e instalar pygame saltando la cadena de deps numpy/gfortran
+        _PYGAME_DEB="$(mktemp /tmp/python3-pygame-XXXX.deb)"
+        if apt-get download python3-pygame -o Dir::Cache::Archives=/tmp 2>/dev/null; then
+            _PYGAME_DEB_PATH="$(ls /tmp/python3-pygame*.deb 2>/dev/null | head -1)"
+            [ -n "$_PYGAME_DEB_PATH" ] && sudo dpkg --force-depends -i "$_PYGAME_DEB_PATH" || true
+        fi
+        rm -f "$_PYGAME_DEB" /tmp/python3-pygame*.deb 2>/dev/null || true
+        # Marcar hold para evitar que apt intente instalar numpy (gcc conflict)
+        sudo apt-mark hold python3-pygame 2>/dev/null || true
+        if python3 -c "import pygame" >/dev/null 2>&1; then
+            log_ok "python3-pygame instalado correctamente (force mode)"
+        else
+            log_warn "python3-pygame sigue sin importar – verificar manualmente"
+        fi
     fi
 fi
 
