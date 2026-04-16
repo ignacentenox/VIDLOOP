@@ -1,2 +1,16 @@
 # Private operational docs (local only)
 README-TECNICOS.local.md
+
+# Directorio de documentación técnica privada (NUNCA subir)
+.internal/
+
+# CSV con devices reales (contiene passwords — solo en VPS y local)
+rpis.csv
+
+# Logs de deploy/migración
+deploy-logs/
+migrate-logs/
+
+# Archivos temporales
+*.bak
+*.bak.*

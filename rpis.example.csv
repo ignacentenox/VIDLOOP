@@ -1,0 +1,28 @@
+# rpis.csv — Lista de Raspberry Pi para despliegue masivo VIDLOOP
+#
+# FORMATO: nombre,host,usuario,password[,puerto[,wg_ip]]
+#
+# - nombre    : Identificador único de la RPi (sin espacios)
+# - host      : IP o hostname de la RPi (accesible desde la máquina de deploy)
+# - usuario   : Usuario SSH (normalmente 'pi' o 'vidloop')
+# - password  : Password SSH
+# - puerto    : Puerto SSH (opcional, default: 22)
+# - wg_ip     : IP WireGuard asignada (opcional — se auto-asigna si no se especifica)
+#
+# IPs WireGuard reservadas (NO reusar):
+#   10.0.0.1  → VPS servidor maestro
+#   10.0.0.2  → TOTEM LANSER 1 (fijo, conectado vía 10.8.0.2)
+#   10.0.0.3  → TOTEM LANSER 2 (fijo)
+#   10.0.0.4+ → Asignación automática para nuevas RPis
+#
+# Copiar este archivo como rpis.csv y editar con los datos reales.
+# El archivo rpis.csv está en .gitignore (contiene passwords).
+#
+# ─────────────────────────────────────────────────────────────
+# nombre,host,usuario,password,puerto,wg_ip
+# ─────────────────────────────────────────────────────────────
+# totem-lanser-1,10.8.0.2,vidloop,4455,22,10.0.0.2
+# totem-lanser-2,192.168.1.10,vidloop,4455,22,10.0.0.3
+# rpi-04,192.168.1.11,vidloop,4455,22,10.0.0.4
+# rpi-05,192.168.1.12,vidloop,4455,22       ← WG_IP se auto-asigna: 10.0.0.5
+# rpi-salon,10.8.0.20,pi,raspberry,2222     ← puerto SSH personalizado

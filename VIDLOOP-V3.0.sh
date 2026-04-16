@@ -511,46 +511,213 @@ if is_true "${ENABLE_WIREGUARD:-true}"; then
     fi
 
     WG_PATH="/etc/wireguard/${WG_INTERFACE}.conf"
-    
+
     # ================================================================
-    # MASTER SETUP: Descargar automáticamente si está disponible en VPS
+    # AUTO-EXCHANGE: La RPi se registra sola en el VPS sin intervención
     # ================================================================
-    if [ -n "${VIDLOOP_DOWNLOAD_WG_FROM_VPS:-}" ] && [ -z "${VIDLOOP_WG_CONFIG_B64:-}" ] \
-       && [ -z "${VIDLOOP_WG_CONFIG_TEXT:-}" ] && [ -z "${VIDLOOP_WG_CONFIG_FILE:-}" ]; then
-        
-        log_info "Intentando descargar configuración WireGuard desde VPS..."
-        
-        VPS_IP="${VIDLOOP_VPS_IP:-82.25.77.55}"
-        VPS_USER="${VIDLOOP_VPS_USER:-root}"
-        VPS_PASS="${VIDLOOP_VPS_PASS:-Vidloop@44tech}"
-        
-        # Validar que tenemos curl o wget
-        if ! command -v curl >/dev/null 2>&1 && ! command -v wget >/dev/null 2>&1; then
-            log_warn "curl/wget no disponible, se omite descarga desde VPS"
-        else
-            # Usar sshpass si está disponible, sino intentar sin contraseña
-            if command -v sshpass >/dev/null 2>&1; then
-                WG_CONF_B64=$(sshpass -p "$VPS_PASS" ssh -o StrictHostKeyChecking=no "$VPS_USER@$VPS_IP" \
-                    'ls -td /tmp/wireguard-* 2>/dev/null | head -1 | xargs -I {} cat {}/wg0.conf | base64 -w0' 2>/dev/null || echo "")
-                
-                if [ -n "$WG_CONF_B64" ]; then
-                    log_ok "Configuración descargada desde VPS"
-                    VIDLOOP_WG_CONFIG_B64="$WG_CONF_B64"
-                fi
+    # Modos disponibles (por orden de prioridad):
+    #   1. VIDLOOP_WG_CONFIG_B64   — config ya generada externamente (deploy masivo)
+    #   2. VIDLOOP_WG_CONFIG_TEXT  — config como texto plano
+    #   3. VIDLOOP_WG_CONFIG_FILE  — ruta a archivo local
+    #   4. VIDLOOP_WG_AUTO_EXCHANGE=true  — la RPi conecta al VPS, genera par de
+    #      claves allí y se registra completamente sola (modo manual/campo)
+    #   5. VIDLOOP_DOWNLOAD_WG_FROM_VPS — legacy: descarga config ya generada
+    # ================================================================
+
+    # ── Modo 4: AUTO-EXCHANGE completo RPi ↔ VPS ─────────────────
+    # Activar con: VIDLOOP_WG_AUTO_EXCHANGE=true VIDLOOP_VPS_IP=82.25.77.55 ...
+    if is_true "${VIDLOOP_WG_AUTO_EXCHANGE:-false}" \
+       && [ -z "${VIDLOOP_WG_CONFIG_B64:-}" ] \
+       && [ -z "${VIDLOOP_WG_CONFIG_TEXT:-}" ] \
+       && [ -z "${VIDLOOP_WG_CONFIG_FILE:-}" ]; then
+
+        log_info "Iniciando auto-exchange WireGuard con VPS..."
+
+        _VPS_IP="${VIDLOOP_VPS_IP:-82.25.77.55}"
+        _VPS_USER="${VIDLOOP_VPS_USER:-root}"
+        _VPS_PASS="${VIDLOOP_VPS_PASS:-Vidloop@44tech}"
+        _VPS_WG_IF="${VIDLOOP_VPS_WG_IF:-wg0}"
+        # IP privada que se asignará a esta RPi (se puede sobreescribir)
+        _RPI_WG_IP="${VIDLOOP_WG_RPI_IP:-}"
+        # Nombre identificador de esta RPi en el VPS
+        _RPI_NAME="${VIDLOOP_RPI_NAME:-$(hostname -s 2>/dev/null || echo "rpi-$(date +%s)")}"
+
+        # Instalar sshpass si falta
+        if ! command -v sshpass >/dev/null 2>&1; then
+            log_info "Instalando sshpass para auto-exchange..."
+            sudo apt-get install -y sshpass 2>/dev/null || {
+                log_warn "sshpass no disponible: auto-exchange cancelado. Pasar VIDLOOP_WG_CONFIG_B64 manualmente."
+            }
+        fi
+
+        if command -v sshpass >/dev/null 2>&1; then
+            log_info "Generando y registrando peer en VPS $_VPS_IP..."
+
+            # Script inline que corre EN el VPS vía SSH.
+            # Recibe: $1=nombre_rpi $2=ip_wg(puede ser vacío) $3=interfaz_wg
+            # Imprime: WG_CONFIG_B64=<base64_del_conf_de_la_RPi>
+            _AUTO_WG_RESULT=$(sshpass -p "$_VPS_PASS" \
+                ssh -o StrictHostKeyChecking=no \
+                    -o ConnectTimeout=10 \
+                    -o BatchMode=no \
+                    "$_VPS_USER@$_VPS_IP" \
+                    bash -s -- "$_RPI_NAME" "$_RPI_WG_IP" "$_VPS_WG_IF" \
+                <<'VPS_INLINE'
+#!/usr/bin/env bash
+set -euo pipefail
+RPI_NAME="$1"
+RPI_WG_IP="$2"
+WG_IF="$3"
+WG_CONF="/etc/wireguard/${WG_IF}.conf"
+
+# Validar que wg0 está activo
+if ! ip link show "$WG_IF" >/dev/null 2>&1; then
+    echo "ERROR: Interfaz $WG_IF no activa en VPS" >&2; exit 1
+fi
+
+# Extraer clave privada del servidor para derivar la pública
+VPS_PRIVATE_KEY=$(grep -m1 '^\s*PrivateKey' "$WG_CONF" 2>/dev/null | awk '{print $3}' || true)
+[ -z "$VPS_PRIVATE_KEY" ] && [ -f "/etc/wireguard/server.key" ] && VPS_PRIVATE_KEY=$(cat /etc/wireguard/server.key)
+if [ -z "$VPS_PRIVATE_KEY" ]; then
+    echo "ERROR: No se encontró clave privada del servidor en $WG_CONF" >&2; exit 1
+fi
+VPS_PUBLIC_KEY=$(echo "$VPS_PRIVATE_KEY" | wg pubkey)
+WG_PORT=$(wg show "$WG_IF" listen-port 2>/dev/null || echo "51820")
+
+# Detectar IP pública del VPS
+VPS_PUBLIC_IP=""
+[ -f /etc/wireguard/.vps_public_ip ] && VPS_PUBLIC_IP=$(cat /etc/wireguard/.vps_public_ip)
+if [ -z "$VPS_PUBLIC_IP" ]; then
+    VPS_PUBLIC_IP=$(curl -fs --max-time 4 ifconfig.me \
+        || curl -fs --max-time 4 api.ipify.org \
+        || echo "82.25.77.55")
+    echo "$VPS_PUBLIC_IP" > /etc/wireguard/.vps_public_ip
+fi
+
+# Detectar subred WG del servidor
+WG_NETWORK=$(ip addr show "$WG_IF" | grep 'inet ' | awk '{print $2}' | head -1)
+[ -z "$WG_NETWORK" ] && WG_NETWORK="10.0.0.1/24"
+WG_SUBNET="${WG_NETWORK%.*}.0/24"
+
+# Auto-asignar IP para la RPi si no se pasó una
+if [ -z "$RPI_WG_IP" ]; then
+    # Encontrar el mayor octeto usado y sumar 1
+    LAST_USED=$(wg show "$WG_IF" allowed-ips 2>/dev/null \
+        | awk '{print $2}' \
+        | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.([0-9]+)' \
+        | awk -F'.' '{print $4}' \
+        | sort -n | tail -1 || echo "9")
+    NEXT=$((LAST_USED + 1))
+    [ "$NEXT" -lt 10 ] && NEXT=10
+    [ "$NEXT" -gt 253 ] && { echo "ERROR: No hay IPs disponibles en la subred WG" >&2; exit 1; }
+    NET_PREFIX="${WG_NETWORK%.*}"
+    RPI_WG_IP="${NET_PREFIX}.${NEXT}"
+fi
+
+# Generar keypair PARA la RPi (en el VPS)
+WORK=$(mktemp -d); trap "rm -rf $WORK" EXIT
+wg genkey | tee "$WORK/rpi.key" | wg pubkey > "$WORK/rpi.pub"
+RPI_PRIV=$(cat "$WORK/rpi.key")
+RPI_PUB=$(cat "$WORK/rpi.pub")
+
+# Eliminar peer anterior con la misma IP (si existe otro)
+OLD_PEER=$(wg show "$WG_IF" allowed-ips 2>/dev/null \
+    | grep "${RPI_WG_IP}/32" | awk '{print $1}' || true)
+[ -n "$OLD_PEER" ] && [ "$OLD_PEER" != "$RPI_PUB" ] \
+    && wg set "$WG_IF" peer "$OLD_PEER" remove 2>/dev/null || true
+
+# Registrar peer en la interfaz (hot, sin reiniciar WG)
+wg set "$WG_IF" peer "$RPI_PUB" allowed-ips "${RPI_WG_IP}/32"
+
+# Persistir en wg0.conf (eliminar bloque previo con esta pubkey si existe)
+if [ -f "$WG_CONF" ]; then
+    TMP_CONF=$(mktemp)
+    awk -v key="$RPI_PUB" '
+        /^\[Peer\]/ { in_p=1; buf=""; skip=0 }
+        in_p { buf = buf $0 "\n" }
+        in_p && $0 ~ key { skip=1 }
+        in_p && /^$/ { if(!skip) printf "%s\n", buf; in_p=0; buf=""; skip=0; next }
+        !in_p { print }
+        END { if(in_p && !skip) printf "%s", buf }
+    ' "$WG_CONF" > "$TMP_CONF" && mv "$TMP_CONF" "$WG_CONF"
+fi
+printf '\n# Peer: %s — %s\n[Peer]\nPublicKey = %s\nAllowedIPs = %s/32\n' \
+    "$RPI_NAME" "$(date -Iseconds)" "$RPI_PUB" "$RPI_WG_IP" >> "$WG_CONF"
+
+# Construir wg0.conf PARA la RPi
+cat > "$WORK/rpi_wg0.conf" <<RPICONF
+[Interface]
+PrivateKey = ${RPI_PRIV}
+Address = ${RPI_WG_IP}/24
+DNS = 1.1.1.1, 8.8.8.8
+
+[Peer]
+PublicKey = ${VPS_PUBLIC_KEY}
+Endpoint = ${VPS_PUBLIC_IP}:${WG_PORT}
+AllowedIPs = ${WG_SUBNET}
+PersistentKeepalive = 25
+RPICONF
+
+# Devolver como base64 — UNA SOLA LÍNEA para parseo sencillo
+echo "WG_CONFIG_B64=$(base64 -w0 "$WORK/rpi_wg0.conf" 2>/dev/null || base64 "$WORK/rpi_wg0.conf")"
+VPS_INLINE
+            ) || true  # no abortar el script si el auto-exchange falla
+
+            # Parsear resultado
+            _WG_B64=$(echo "$_AUTO_WG_RESULT" | grep "^WG_CONFIG_B64=" | cut -d= -f2- | tr -d '\n' || true)
+            if [ -n "$_WG_B64" ]; then
+                VIDLOOP_WG_CONFIG_B64="$_WG_B64"
+                log_ok "Auto-exchange WireGuard completado para $_RPI_NAME"
+            else
+                log_warn "Auto-exchange falló o devolvió vacío. WireGuard instalado pero sin configurar."
+                log_warn "Output VPS: $_AUTO_WG_RESULT"
+            fi
+        fi
+
+    # ── Modo 5: Legacy — descargar config ya generada desde VPS ──
+    elif [ -n "${VIDLOOP_DOWNLOAD_WG_FROM_VPS:-}" ] \
+         && [ -z "${VIDLOOP_WG_CONFIG_B64:-}" ] \
+         && [ -z "${VIDLOOP_WG_CONFIG_TEXT:-}" ] \
+         && [ -z "${VIDLOOP_WG_CONFIG_FILE:-}" ]; then
+
+        log_info "Descargando config WireGuard pre-generada desde VPS (modo legacy)..."
+        _VPS_IP="${VIDLOOP_VPS_IP:-82.25.77.55}"
+        _VPS_USER="${VIDLOOP_VPS_USER:-root}"
+        _VPS_PASS="${VIDLOOP_VPS_PASS:-Vidloop@44tech}"
+
+        if ! command -v sshpass >/dev/null 2>&1; then
+            sudo apt-get install -y sshpass 2>/dev/null || true
+        fi
+
+        if command -v sshpass >/dev/null 2>&1; then
+            _LEGACY_B64=$(sshpass -p "$_VPS_PASS" \
+                ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 \
+                    "$_VPS_USER@$_VPS_IP" \
+                'f=$(ls -td /tmp/wireguard-* 2>/dev/null | head -1); [ -n "$f" ] && cat "$f/wg0.conf" | base64 -w0 2>/dev/null || base64 "$f/wg0.conf"' \
+                2>/dev/null || echo "")
+            if [ -n "$_LEGACY_B64" ]; then
+                VIDLOOP_WG_CONFIG_B64="$_LEGACY_B64"
+                log_ok "Config WireGuard descargada desde VPS (legacy)"
+            else
+                log_warn "No se encontró config pre-generada en VPS"
             fi
         fi
     fi
-    
-    # Aplicar configuración desde uno de los métodos disponibles
+
+    # ── Aplicar configuración (cualquier modo) ───────────────────
     if [ -n "${VIDLOOP_WG_CONFIG_B64:-}" ]; then
-        echo "$VIDLOOP_WG_CONFIG_B64" | base64 -d | sudo tee "$WG_PATH" >/dev/null
+        echo "${VIDLOOP_WG_CONFIG_B64}" | base64 -d | sudo tee "$WG_PATH" >/dev/null
+        log_ok "Config WireGuard aplicada desde base64"
     elif [ -n "${VIDLOOP_WG_CONFIG_TEXT:-}" ]; then
-        printf '%s\n' "$VIDLOOP_WG_CONFIG_TEXT" | sudo tee "$WG_PATH" >/dev/null
+        printf '%s\n' "${VIDLOOP_WG_CONFIG_TEXT}" | sudo tee "$WG_PATH" >/dev/null
+        log_ok "Config WireGuard aplicada desde texto"
     elif [ -n "${VIDLOOP_WG_CONFIG_FILE:-}" ] && [ -f "${VIDLOOP_WG_CONFIG_FILE}" ]; then
         sudo install -m 0600 "${VIDLOOP_WG_CONFIG_FILE}" "$WG_PATH"
+        log_ok "Config WireGuard aplicada desde archivo"
     else
-        log_warn "ENABLE_WIREGUARD=true pero no se recibio config (VIDLOOP_WG_CONFIG_B64/TEXT/FILE/DOWNLOAD_FROM_VPS)."
-        log_warn "Se instala WireGuard pero no se levanta interfaz."
+        log_warn "ENABLE_WIREGUARD=true pero no hay config disponible."
+        log_warn "Opciones: VIDLOOP_WG_CONFIG_B64 | VIDLOOP_WG_AUTO_EXCHANGE=true | VIDLOOP_WG_CONFIG_FILE"
+        log_warn "WireGuard instalado pero interfaz no levantada."
     fi
 
     if [ -f "$WG_PATH" ]; then
