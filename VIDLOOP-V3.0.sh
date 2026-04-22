@@ -778,6 +778,21 @@ elif sudo systemctl list-unit-files | grep -q '^sshd\.service'; then
 fi
 log_ok "SSH configurado"
 
+# Abrir puerto 22 en UFW sin restricción de subred
+# Necesario para que el dashboard pueda conectarse por ZeroTier o LAN
+if command -v ufw >/dev/null 2>&1; then
+    log_info "Configurando UFW: abriendo puerto 22..."
+    sudo ufw allow 22/tcp >/dev/null 2>&1 || true
+    # Habilitar UFW sin interactividad si no está activo
+    if ! sudo ufw status 2>/dev/null | grep -q 'Status: active'; then
+        echo 'y' | sudo ufw enable >/dev/null 2>&1 || true
+    fi
+    sudo ufw reload >/dev/null 2>&1 || true
+    log_ok "UFW: puerto 22 habilitado"
+else
+    log_info "UFW no instalado, se omite configuración de firewall"
+fi
+
 if is_true "$IS_RPI"; then
     log_info "Configurando screen blanking off..."
     AUTOSTART="/home/${VIDLOOP_SYSTEM_USER}/.config/lxsession/LXDE-pi/autostart"
@@ -896,10 +911,29 @@ echo
 echo -e "${GREEN}==============================================${NC}"
 echo -e "${GREEN}     VIDLOOP V3.0 - SETUP COMPLETADO          ${NC}"
 echo -e "${GREEN}==============================================${NC}"
+# Detectar IP LAN (interfaz eth0 o wlan0, excluyendo ZeroTier y loopback)
+LAN_IP=""
+for iface in eth0 wlan0 end0; do
+    _ip=$(ip -4 addr show "$iface" 2>/dev/null | awk '/inet / {gsub(/\/.*/, "", $2); print $2; exit}')
+    if [ -n "$_ip" ]; then
+        LAN_IP="$_ip"
+        break
+    fi
+done
+# Fallback: primera IP que no sea loopback ni ZeroTier (172.x / 192.168.193.x)
+if [ -z "$LAN_IP" ]; then
+    LAN_IP=$(ip -4 addr show 2>/dev/null | awk '/inet / && !/127\./ && !/172\.[0-9]+\.[0-9]+/ {gsub(/\/.*/, "", $2); print $2; exit}' || true)
+fi
+
 echo -e "${YELLOW}Usuario SSH:${NC} ${VIDLOOP_SYSTEM_USER}"
 echo -e "${YELLOW}Password SSH:${NC} ${VIDLOOP_SYSTEM_PASS}"
 echo -e "${YELLOW}Carpeta videos:${NC} /home/${VIDLOOP_SYSTEM_USER}/VIDLOOP44"
 echo -e "${YELLOW}Nota:${NC} PasswordAuthentication por defecto queda en SI"
+if [ -n "$LAN_IP" ]; then
+    echo
+    echo -e "${GREEN}>>> IP LAN (fallback dashboard):${NC} ${LAN_IP}"
+    echo -e "${BLUE}    Cargá esta IP en el campo 'IP LAN (fallback)' del dispositivo en vidloop.dev.ar${NC}"
+fi
 
 if is_true "$VIDLOOP_AUTO_REBOOT"; then
     log_info "Reinicio automatico habilitado (VIDLOOP_AUTO_REBOOT=true)"
