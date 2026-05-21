@@ -1,0 +1,133 @@
+# ================================================================
+#                    VIDLOOP MIXED - COMANDOS
+#            Desarrollado por IGNACE - Powered By: 44 Contenidos
+# ================================================================
+
+# =================
+# INSTALACIÓN INICIAL
+# =================
+
+# Actualizar sistema
+sudo apt update && sudo apt upgrade -y
+
+# Clonar repo e instalar
+git clone https://github.com/ignacentenox/VIDLOOP
+cd VIDLOOP
+sudo ./install.sh --zt-network TU_NETWORK_ID --auto-reboot
+
+# =================
+# CONTROL DE SERVICIOS
+# =================
+
+# Ver estado del servicio principal
+sudo systemctl status video_looper
+
+# Iniciar / Detener / Reiniciar servicio
+sudo systemctl start video_looper
+sudo systemctl stop video_looper
+sudo systemctl restart video_looper
+
+# Ver estado de servicios de pantalla (HDMI / Display Guard)
+sudo systemctl status vidloop-boot-blackout
+sudo systemctl status vidloop-display-guard
+sudo systemctl status vidloop-hdmi-keepalive
+
+# =================
+# LOGS Y DIAGNÓSTICOS
+# =================
+
+# Ver logs del servicio principal en tiempo real (systemd)
+sudo journalctl -u video_looper -f
+
+# Ver archivo principal de logs de reproducción (backend)
+sudo tail -f /var/log/vidloop44.log
+
+# =================
+# CONFIGURACIÓN DE ARCHIVOS
+# =================
+
+# Editar configuración principal de VIDLOOP
+sudo nano /etc/default/vidloop
+
+# (Variables útiles que podés cambiar ahí:)
+# VIDLOOP_MEDIA_DIR="/home/vidloop/VIDLOOP44"
+# VIDLOOP_IMAGE_DURATION_SEC="20"
+# VIDLOOP_WAIT_SEC="0"
+# VIDLOOP_VIDEO_ASPECT_MODE="fill"
+
+# Editar configuración de HDMI (config.txt)
+sudo nano /boot/config.txt
+
+# =================
+# DIRECTORIO DE MEDIOS
+# =================
+
+# Ruta donde se suben los videos e imágenes
+# /home/vidloop/VIDLOOP44
+
+# Verificar espacio ocupado por medios
+du -sh /home/vidloop/VIDLOOP44/
+
+# =================
+# ZEROTIER VPN
+# =================
+
+# Ver información de ZeroTier
+sudo zerotier-cli info
+
+# Listar redes conectadas
+sudo zerotier-cli listnetworks
+
+# Unirse / Salir de red ZeroTier
+sudo zerotier-cli join NETWORK_ID
+sudo zerotier-cli leave NETWORK_ID
+
+# Reiniciar servicio ZeroTier
+sudo systemctl restart zerotier-one
+
+# =================
+# MONITOREO DEL SISTEMA
+# =================
+
+# Ver temperatura de la CPU
+vcgencmd measure_temp
+
+# Ver información de la CPU / Memoria / Disco
+cat /proc/cpuinfo
+free -h
+df -h
+htop
+
+# Ver procesos activos (video_looper, omxplayer, fbi)
+ps aux | grep -E 'video_looper|omxplayer|fbi'
+pgrep -f video_looper
+
+# =================
+# COMANDOS DE EMERGENCIA / PANTALLA
+# =================
+
+# Si la pantalla está negra / forzar HDMI
+sudo tvservice -p
+sudo tvservice --explicit="CEA 16 HDMI"
+
+# Refrescar HDMI Keepalive
+sudo systemctl restart vidloop-hdmi-keepalive
+
+# Matar reproductores a la fuerza
+sudo pkill -f omxplayer
+sudo pkill -f fbi
+sudo systemctl restart video_looper
+
+# =================
+# REINICIO Y APAGADO
+# =================
+
+# Reinicio normal
+sudo reboot
+
+# Apagado completo
+sudo shutdown -h now
+
+# ================================================================
+#                         FIN DE COMANDOS
+# ================================================================
