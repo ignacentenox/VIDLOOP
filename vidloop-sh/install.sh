@@ -38,6 +38,8 @@ ENABLE_SSH_PASSWORD_AUTH="${ENABLE_SSH_PASSWORD_AUTH:-true}"
 ORANGE='\033[38;5;208m'
 WHITE='\033[1;37m'
 DIM='\033[2;37m'
+GREEN='\033[38;5;118m'
+YELLOW='\033[38;5;226m'
 RED='\033[38;5;196m'
 BLACK_BG='\033[40m'
 NC='\033[0m'
@@ -51,8 +53,8 @@ reset_installer_theme() {
 }
 
 log_info()  { printf "%b[INFO]%b %s\n" "$ORANGE" "$NC$WHITE" "$*"; }
-log_ok()    { printf "%b[ OK ]%b %s\n" "$ORANGE" "$NC$WHITE" "$*"; }
-log_warn()  { printf "%b[WARN]%b %s\n" "$ORANGE" "$NC$WHITE" "$*"; }
+log_ok()    { printf "%b[ OK ]%b %s\n" "$GREEN" "$NC$WHITE" "$*"; }
+log_warn()  { printf "%b[WARN]%b %s\n" "$YELLOW" "$NC$WHITE" "$*"; }
 log_error() { printf "%b[ERROR]%b %s\n" "$RED" "$NC" "$*"; }
 
 trap reset_installer_theme EXIT
@@ -202,7 +204,6 @@ validate_uint_range() {
 validate_username() {
     if ! printf '%s' "$VIDLOOP_USER" | grep -Eq '^[a-z_][a-z0-9_-]*[$]?$'; then
         log_error "VIDLOOP_USER invalido: $VIDLOOP_USER"
-        log_error "Usa un usuario Linux valido, por ejemplo: vidloop"
         exit 1
     fi
 }
@@ -227,7 +228,6 @@ case "$VIDLOOP_VIDEO_ASPECT_MODE" in
     fill|letterbox|stretch) ;;
     *)
         log_error "VIDLOOP_VIDEO_ASPECT_MODE invalido: $VIDLOOP_VIDEO_ASPECT_MODE"
-        log_error "Valores validos: fill, letterbox, stretch"
         exit 1
         ;;
 esac
@@ -240,15 +240,8 @@ case "$VIDLOOP_MEDIA_DIR" in
         ;;
 esac
 case "$VIDLOOP_MEDIA_DIR" in
-    *\"*)
-        log_error "VIDLOOP_MEDIA_DIR no puede contener comillas dobles"
-        exit 1
-        ;;
-esac
-case "$VIDLOOP_MEDIA_DIR" in
-    *'
-'*)
-        log_error "VIDLOOP_MEDIA_DIR no puede contener saltos de linea"
+    *\"*|*' '*)
+        log_error "VIDLOOP_MEDIA_DIR formato invalido"
         exit 1
         ;;
 esac
@@ -258,17 +251,8 @@ if printf '%s' "$VIDLOOP_MEDIA_DIR" | LC_ALL=C grep -q '[[:cntrl:]]'; then
 fi
 
 case "$VIDLOOP_PASSWORD" in
-    *:*)
-        log_error "VIDLOOP_PASSWORD no puede contener ':' porque chpasswd lo usa como separador"
-        exit 1
-        ;;
-esac
-case "$VIDLOOP_PASSWORD" in
-    *'
-'*)
-        log_error "VIDLOOP_PASSWORD no puede contener saltos de linea"
-        exit 1
-        ;;
+    *:*) log_error "VIDLOOP_PASSWORD no puede contener ':'"; exit 1 ;;
+    *' '*) log_error "VIDLOOP_PASSWORD formato invalido"; exit 1 ;;
 esac
 if printf '%s' "$VIDLOOP_PASSWORD" | LC_ALL=C grep -q '[[:cntrl:]]'; then
     log_error "VIDLOOP_PASSWORD no puede contener caracteres de control"
@@ -315,7 +299,6 @@ configure_buster_repos() {
     [ "$os_codename" = "buster" ] || return 0
 
     log_warn "Raspberry Pi OS Buster detectado; configurando repositorios legacy/archive."
-
     backup_once /etc/apt/sources.list
 
     if [ -f /etc/apt/sources.list ]; then
@@ -366,21 +349,23 @@ apt_install() {
 upsert_boot_config() {
     file="$1"
     key="$2"
-    value="$3"
-
+    val="$3"
     touch "$file"
-    sed -i "/^[[:space:]]*#*[[:space:]]*$key=/d" "$file"
-    printf '%s=%s\n' "$key" "$value" >> "$file"
+    if grep -E -q "^[[:space:]]*$key=" "$file"; then
+        sed -i "s/^[[:space:]]*$key=.*/$key=$val/" "$file"
+    elif grep -E -q "^[[:space:]]*#[[:space:]]*$key=" "$file"; then
+        sed -i "s/^[[:space:]]*#[[:space:]]*$key=.*/$key=$val/" "$file"
+    else
+        echo "$key=$val" >> "$file"
+    fi
 }
 
 set_cmdline_arg() {
     file="$1"
     key="$2"
     value="$3"
-
     [ -f "$file" ] || return 0
     backup_once "$file"
-
     tmp_file="$(mktemp)"
     found="false"
     new_line=""
@@ -392,7 +377,6 @@ set_cmdline_arg() {
                 found="true"
                 ;;
         esac
-
         if [ -n "$new_line" ]; then
             new_line="$new_line $token"
         else
@@ -416,10 +400,8 @@ set_cmdline_arg() {
 set_cmdline_flag() {
     file="$1"
     flag="$2"
-
     [ -f "$file" ] || return 0
     backup_once "$file"
-
     tmp_file="$(mktemp)"
     found="false"
     new_line=""
@@ -428,7 +410,6 @@ set_cmdline_flag() {
         if [ "$token" = "$flag" ]; then
             found="true"
         fi
-
         if [ -n "$new_line" ]; then
             new_line="$new_line $token"
         else
@@ -453,7 +434,6 @@ set_sshd_kv() {
     file="$1"
     key="$2"
     value="$3"
-
     touch "$file"
     sed -i "/^[[:space:]]*#*[[:space:]]*$key[[:space:]]/d" "$file"
     printf '%s %s\n' "$key" "$value" >> "$file"
@@ -463,7 +443,6 @@ set_eq_kv() {
     file="$1"
     key="$2"
     value="$3"
-
     touch "$file"
     sed -i "/^[[:space:]]*#*[[:space:]]*$key=/d" "$file"
     printf '%s=%s\n' "$key" "$value" >> "$file"
@@ -793,7 +772,7 @@ if is_true "$VIDLOOP_DISABLE_TTY_GETTY"; then
 fi
 
 if is_true "$VIDLOOP_ENABLE_HDMI_KEEPALIVE" && command -v tvservice >/dev/null 2>&1; then
-    log_info "Instalando HDMI keepalive..."
+    log_info "Instalando HDMI keepalive (tvservice daemon)..."
     cat > /usr/local/bin/vidloop-hdmi-keepalive.sh <<'EOF'
 #!/bin/sh
 CONFIG_FILE="/etc/default/vidloop"
