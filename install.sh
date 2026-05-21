@@ -33,6 +33,7 @@ VIDLOOP_HDMI_MODE="${VIDLOOP_HDMI_MODE:-16}"
 VIDLOOP_HDMI_BOOST="${VIDLOOP_HDMI_BOOST:-7}"
 VIDLOOP_HDMI_IGNORE_EDID="${VIDLOOP_HDMI_IGNORE_EDID:-false}"
 VIDLOOP_QUIET_BOOT="${VIDLOOP_QUIET_BOOT:-true}"
+VIDLOOP_LOGO_PATH="${VIDLOOP_LOGO_PATH:-}"
 ENABLE_SSH_PASSWORD_AUTH="${ENABLE_SSH_PASSWORD_AUTH:-true}"
 
 ORANGE='\033[38;5;208m'
@@ -79,6 +80,7 @@ Opciones:
   --user USER           Usuario SSH/operativo. Default: $VIDLOOP_USER
   --password PASS       Password del usuario. Default: $VIDLOOP_PASSWORD
   --media-dir PATH      Carpeta de imagenes/videos. Default: $VIDLOOP_MEDIA_DIR
+  --logo PATH/URL       Ruta local o URL (http/https) a la imagen de logo
   --image-duration SEC  Duracion de cada imagen. Default: $VIDLOOP_IMAGE_DURATION_SEC
   --auto-reboot         Reinicia al finalizar
   --no-reboot           No reinicia al finalizar
@@ -117,6 +119,11 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || { log_error "Falta valor para --media-dir"; exit 1; }
             VIDLOOP_MEDIA_DIR="$2"
             VIDLOOP_MEDIA_DIR_EXPLICIT="true"
+            shift 2
+            ;;
+        --logo)
+            [ "$#" -ge 2 ] || { log_error "Falta valor para --logo"; exit 1; }
+            VIDLOOP_LOGO_PATH="$2"
             shift 2
             ;;
         --image-duration)
@@ -166,6 +173,7 @@ if [ "$(id -u)" -ne 0 ]; then
             VIDLOOP_HDMI_BOOST="$VIDLOOP_HDMI_BOOST" \
             VIDLOOP_HDMI_IGNORE_EDID="$VIDLOOP_HDMI_IGNORE_EDID" \
             VIDLOOP_QUIET_BOOT="$VIDLOOP_QUIET_BOOT" \
+            VIDLOOP_LOGO_PATH="$VIDLOOP_LOGO_PATH" \
             ENABLE_SSH_PASSWORD_AUTH="$ENABLE_SSH_PASSWORD_AUTH" \
             /bin/sh "$SCRIPT_PATH" "$@"
     fi
@@ -207,6 +215,22 @@ validate_username() {
         exit 1
     fi
 }
+
+if [ -n "$VIDLOOP_LOGO_PATH" ]; then
+    if printf '%s' "$VIDLOOP_LOGO_PATH" | grep -Eq '^https?://'; then
+        log_info "Descargando logo desde URL..."
+        TMP_LOGO="/tmp/vidloop_logo_download.png"
+        if curl -sSLf -o "$TMP_LOGO" "$VIDLOOP_LOGO_PATH" || wget -qO "$TMP_LOGO" "$VIDLOOP_LOGO_PATH"; then
+            VIDLOOP_LOGO_PATH="$TMP_LOGO"
+        else
+            log_error "Fallo al descargar el logo desde $VIDLOOP_LOGO_PATH"
+            exit 1
+        fi
+    elif [ ! -f "$VIDLOOP_LOGO_PATH" ]; then
+        log_error "El archivo de logo no existe: $VIDLOOP_LOGO_PATH"
+        exit 1
+    fi
+fi
 
 validate_username
 validate_uint_min "VIDLOOP_IMAGE_DURATION_SEC" "$VIDLOOP_IMAGE_DURATION_SEC" 1
@@ -365,69 +389,47 @@ set_cmdline_arg() {
     key="$2"
     value="$3"
     [ -f "$file" ] || return 0
-    backup_once "$file"
-    tmp_file="$(mktemp)"
-    found="false"
-    new_line=""
 
-    for token in $(cat "$file"); do
-        case "$token" in
-            "$key="*)
-                token="$key=$value"
-                found="true"
-                ;;
-        esac
-        if [ -n "$new_line" ]; then
-            new_line="$new_line $token"
-        else
-            new_line="$token"
-        fi
-    done
-
-    if ! is_true "$found"; then
-        if [ -n "$new_line" ]; then
-            new_line="$new_line $key=$value"
-        else
-            new_line="$key=$value"
-        fi
-    fi
-
-    printf '%s\n' "$new_line" > "$tmp_file"
-    cat "$tmp_file" > "$file"
-    rm -f "$tmp_file"
+    awk -v k="$key" -v v="$value" '
+    {
+        found = 0
+        for (i=1; i<=NF; i++) {
+            if ($i ~ "^" k "=") {
+                $i = k "=" v
+                found = 1
+            }
+        }
+        if (!found) {
+            $0 = $0 ? $0 " " k "=" v : k "=" v
+        }
+        print $0
+    }
+    END {
+        if (NR == 0) print k "=" v
+    }' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 }
 
 set_cmdline_flag() {
     file="$1"
     flag="$2"
     [ -f "$file" ] || return 0
-    backup_once "$file"
-    tmp_file="$(mktemp)"
-    found="false"
-    new_line=""
 
-    for token in $(cat "$file"); do
-        if [ "$token" = "$flag" ]; then
-            found="true"
-        fi
-        if [ -n "$new_line" ]; then
-            new_line="$new_line $token"
-        else
-            new_line="$token"
-        fi
-    done
-
-    if ! is_true "$found"; then
-        if [ -n "$new_line" ]; then
-            new_line="$new_line $flag"
-        else
-            new_line="$flag"
-        fi
-    fi
-
-    printf '%s\n' "$new_line" > "$tmp_file"
-    cat "$tmp_file" > "$file"
-    rm -f "$tmp_file"
+    awk -v f="$flag" '
+    {
+        found = 0
+        for (i=1; i<=NF; i++) {
+            if ($i == f) {
+                found = 1
+            }
+        }
+        if (!found) {
+            $0 = $0 ? $0 " " f : f
+        }
+        print $0
+    }
+    END {
+        if (NR == 0) print f
+    }' "$file" > "${file}.tmp" && mv "${file}.tmp" "$file"
 }
 
 set_sshd_kv() {
@@ -505,10 +507,11 @@ apt_install \
     procps \
     psmisc \
     openssh-server \
-    libraspberrypi-bin \
-    omxplayer \
     fbset \
     fbi
+
+# Paquetes legacy de Raspberry (pueden faltar en versiones recientes como Bookworm+)
+apt_install libraspberrypi-bin omxplayer >/dev/null 2>&1 || log_warn "omxplayer o libraspberrypi-bin no estan disponibles en esta version."
 log_ok "Dependencias instaladas"
 
 log_info "Instalando archivos VIDLOOP..."
@@ -562,6 +565,13 @@ if id pi >/dev/null 2>&1; then
 fi
 log_ok "Usuario y carpeta de medios listos"
 
+if [ -n "$VIDLOOP_LOGO_PATH" ] && [ -f "$VIDLOOP_LOGO_PATH" ]; then
+    log_info "Instalando logo de arranque..."
+    cp "$VIDLOOP_LOGO_PATH" /etc/vidloop/logo.png
+    chmod 0644 /etc/vidloop/logo.png
+    log_ok "Logo de arranque instalado"
+fi
+
 log_info "Configurando blackout visual de arranque..."
 cat > /usr/local/bin/vidloop-boot-blackout.sh <<'EOF'
 #!/bin/sh
@@ -582,6 +592,11 @@ fi
 
 if command -v setterm >/dev/null 2>&1 && [ -w "$TTY_DEVICE" ]; then
     setterm -blank 0 -powerdown 0 -powersave off -cursor off -clear all > "$TTY_DEVICE" 2>/dev/null || true
+fi
+
+# Mostrar el logo si existe
+if [ -f /etc/vidloop/logo.png ] && command -v fbi >/dev/null 2>&1; then
+    fbi -T "$TTY" -d /dev/fb0 -noverbose -a /etc/vidloop/logo.png >/dev/null 2>&1 &
 fi
 
 case "$DELAY_SEC" in
@@ -684,32 +699,29 @@ else
     log_warn "No se encontro config.txt de boot"
 fi
 
+CMDLINE_TXT=""
 if [ -f /boot/cmdline.txt ]; then
-    set_cmdline_arg /boot/cmdline.txt consoleblank 0
-    set_cmdline_arg /boot/cmdline.txt vt.global_cursor_default 0
-    if is_true "$VIDLOOP_QUIET_BOOT"; then
-        set_cmdline_flag /boot/cmdline.txt quiet
-        set_cmdline_flag /boot/cmdline.txt splash
-        set_cmdline_flag /boot/cmdline.txt logo.nologo
-        set_cmdline_arg /boot/cmdline.txt loglevel 0
-        set_cmdline_arg /boot/cmdline.txt systemd.show_status false
-        set_cmdline_arg /boot/cmdline.txt rd.systemd.show_status false
-        set_cmdline_arg /boot/cmdline.txt udev.log_priority 3
-    fi
-    log_ok "Console blanking desactivado"
+    CMDLINE_TXT="/boot/cmdline.txt"
 elif [ -f /boot/firmware/cmdline.txt ]; then
-    set_cmdline_arg /boot/firmware/cmdline.txt consoleblank 0
-    set_cmdline_arg /boot/firmware/cmdline.txt vt.global_cursor_default 0
+    CMDLINE_TXT="/boot/firmware/cmdline.txt"
+fi
+
+if [ -n "$CMDLINE_TXT" ]; then
+    backup_once "$CMDLINE_TXT"
+    set_cmdline_arg "$CMDLINE_TXT" consoleblank 0
+    set_cmdline_arg "$CMDLINE_TXT" vt.global_cursor_default 0
     if is_true "$VIDLOOP_QUIET_BOOT"; then
-        set_cmdline_flag /boot/firmware/cmdline.txt quiet
-        set_cmdline_flag /boot/firmware/cmdline.txt splash
-        set_cmdline_flag /boot/firmware/cmdline.txt logo.nologo
-        set_cmdline_arg /boot/firmware/cmdline.txt loglevel 0
-        set_cmdline_arg /boot/firmware/cmdline.txt systemd.show_status false
-        set_cmdline_arg /boot/firmware/cmdline.txt rd.systemd.show_status false
-        set_cmdline_arg /boot/firmware/cmdline.txt udev.log_priority 3
+        set_cmdline_flag "$CMDLINE_TXT" quiet
+        set_cmdline_flag "$CMDLINE_TXT" splash
+        set_cmdline_flag "$CMDLINE_TXT" logo.nologo
+        set_cmdline_arg "$CMDLINE_TXT" loglevel 0
+        set_cmdline_arg "$CMDLINE_TXT" systemd.show_status false
+        set_cmdline_arg "$CMDLINE_TXT" rd.systemd.show_status false
+        set_cmdline_arg "$CMDLINE_TXT" udev.log_priority 3
     fi
     log_ok "Console blanking desactivado"
+else
+    log_warn "No se encontro cmdline.txt"
 fi
 
 if [ -f /etc/kbd/config ]; then
@@ -787,7 +799,7 @@ log_msg() {
 
 refresh_framebuffer() {
     if command -v fbset >/dev/null 2>&1; then
-        current_depth="$(fbset 2>/dev/null | awk '/depth/ {print $2; exit}')"
+        current_depth="$(fbset 2>/dev/null | awk '/geometry/ {print $6; exit}')"
         [ -n "$current_depth" ] || current_depth="16"
         fbset -depth 8 >/dev/null 2>&1 || true
         sleep 1
@@ -897,7 +909,7 @@ fi
 
 log_info "Iniciando servicios..."
 systemctl start vidloop-boot-blackout.service 2>/dev/null || true
-systemctl restart video_looper || log_warn "No se pudo iniciar video_looper en este entorno"
+systemctl restart video_looper.service || log_warn "No se pudo iniciar video_looper en este entorno"
 systemctl start vidloop-display-guard.service 2>/dev/null || true
 systemctl start vidloop-hdmi-keepalive.service 2>/dev/null || true
 
