@@ -1,4 +1,4 @@
-# VIDLOOP Mixed
+# VIDLOOP
 
 Instalador para Raspberry Pi OS Lite Legacy Buster (`2022-01-28-raspios-buster-armhf-lite`) que reproduce imagenes y videos en loop sin convertir fotos a MP4.
 
