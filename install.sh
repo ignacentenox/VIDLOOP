@@ -514,6 +514,28 @@ apt_install \
 apt_install libraspberrypi-bin omxplayer >/dev/null 2>&1 || log_warn "omxplayer o libraspberrypi-bin no estan disponibles en esta version."
 log_ok "Dependencias instaladas"
 
+log_info "Instalando extractor de YouTube (yt-dlp)..."
+apt_install python3 >/dev/null 2>&1 || true
+if curl -sSLf https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp || wget -q https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -O /usr/local/bin/yt-dlp; then
+    chmod a+rx /usr/local/bin/yt-dlp
+    log_ok "yt-dlp instalado con exito en /usr/local/bin"
+else
+    log_warn "Fallo la instalacion rapida de yt-dlp. Intentando instalar via python3-pip..."
+    if apt_install python3-pip python3-setuptools >/dev/null 2>&1; then
+        if pip3 install --help 2>/dev/null | grep -q -- "--break-system-packages"; then
+            pip3 install --break-system-packages -U yt-dlp >/dev/null 2>&1 || log_warn "No se pudo instalar yt-dlp via pip3."
+        else
+            pip3 install -U yt-dlp >/dev/null 2>&1 || log_warn "No se pudo instalar yt-dlp via pip3."
+        fi
+        if command -v yt-dlp >/dev/null 2>&1; then
+            log_ok "yt-dlp instalado exitosamente via pip3"
+        fi
+    else
+        log_error "No se pudo instalar yt-dlp. El soporte de links de YouTube estara inactivo."
+    fi
+fi
+
+
 log_info "Instalando archivos VIDLOOP..."
 install -d -m 0755 /usr/local/bin
 install -m 0755 "$SCRIPT_DIR/vidloop-player.sh" /usr/local/bin/vidloop-player.sh

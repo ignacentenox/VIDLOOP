@@ -54,24 +54,34 @@ is_video() {
     esac
 }
 
+is_youtube() {
+    case "$1" in
+        *.[Yy][Tt]|*.[Yy][Oo][Uu][Tt][Uu][Bb][Ee]) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 media_count() {
     find "$VIDLOOP_MEDIA_DIR" -maxdepth 1 -type f \( \
         -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.mkv' -o -iname '*.avi' -o -iname '*.mpg' -o -iname '*.mpeg' -o -iname '*.ts' -o -iname '*.m2ts' -o \
-        -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' \
+        -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o \
+        -iname '*.yt' -o -iname '*.youtube' \
     \) 2>/dev/null | wc -l | tr -d ' '
 }
 
 first_media_file() {
     find "$VIDLOOP_MEDIA_DIR" -maxdepth 1 -type f \( \
         -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.mkv' -o -iname '*.avi' -o -iname '*.mpg' -o -iname '*.mpeg' -o -iname '*.ts' -o -iname '*.m2ts' -o \
-        -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' \
+        -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o \
+        -iname '*.yt' -o -iname '*.youtube' \
     \) 2>/dev/null | sort | sed -n '1p'
 }
 
 list_media_files() {
     find "$VIDLOOP_MEDIA_DIR" -maxdepth 1 -type f \( \
         -iname '*.mp4' -o -iname '*.m4v' -o -iname '*.mov' -o -iname '*.mkv' -o -iname '*.avi' -o -iname '*.mpg' -o -iname '*.mpeg' -o -iname '*.ts' -o -iname '*.m2ts' -o \
-        -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' \
+        -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.png' -o -iname '*.gif' -o -iname '*.bmp' -o \
+        -iname '*.yt' -o -iname '*.youtube' \
     \) 2>/dev/null | sort
 }
 
@@ -150,6 +160,50 @@ play_video() {
     blank_tty
 }
 
+play_youtube() {
+    file="$1"
+    extra_loop="${2:-false}"
+    url="$(cat "$file" | tr -d '\r\n ')"
+    
+    if [ -z "$url" ]; then
+        log "WARN Archivo YouTube vacio: $file"
+        return 1
+    fi
+
+    if ! command -v yt-dlp >/dev/null 2>&1; then
+        log "WARN yt-dlp no esta instalado; no se puede reproducir video de YouTube: $file"
+        sleep_interruptible 5 || true
+        return 0
+    fi
+
+    log "YOUTUBE resolviendo URL: $url"
+    stream_url="$(yt-dlp -g -f 'best[ext=mp4]/best' "$url" 2>/dev/null || yt-dlp -g "$url" 2>/dev/null || true)"
+
+    if [ -z "$stream_url" ]; then
+        log "ERROR No se pudo extraer stream de YouTube para: $url"
+        sleep_interruptible 5 || true
+        return 1
+    fi
+
+    if ! command -v omxplayer >/dev/null 2>&1; then
+        log "WARN omxplayer no esta instalado; no se puede reproducir stream: $file"
+        sleep_interruptible 2 || true
+        return 0
+    fi
+
+    log "YOUTUBE reproducir stream: $url"
+    stop_players
+    if is_true "$extra_loop"; then
+        omxplayer --no-osd --blank --aspect-mode "$VIDLOOP_VIDEO_ASPECT_MODE" --loop "$stream_url" >/dev/null 2>&1 &
+    else
+        omxplayer --no-osd --blank --aspect-mode "$VIDLOOP_VIDEO_ASPECT_MODE" "$stream_url" >/dev/null 2>&1 &
+    fi
+    CURRENT_PID="$!"
+    wait "$CURRENT_PID" 2>/dev/null || true
+    CURRENT_PID=""
+    blank_tty
+}
+
 trap handle_stop INT TERM HUP
 trap stop_players EXIT
 
@@ -172,6 +226,9 @@ while [ "$STOP_REQUESTED" -eq 0 ]; do
         if [ -n "$only_file" ] && is_video "$only_file"; then
             play_video "$only_file" true
             continue
+        elif [ -n "$only_file" ] && is_youtube "$only_file"; then
+            play_youtube "$only_file" true
+            continue
         fi
     fi
 
@@ -183,6 +240,8 @@ while [ "$STOP_REQUESTED" -eq 0 ]; do
             play_image "$media_file"
         elif is_video "$media_file"; then
             play_video "$media_file" false
+        elif is_youtube "$media_file"; then
+            play_youtube "$media_file" false
         fi
 
         if [ "$VIDLOOP_WAIT_SEC" -gt 0 ]; then
